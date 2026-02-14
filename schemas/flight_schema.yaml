@@ -1,0 +1,25 @@
+required_columns:
+  - FlightDate
+  - Reporting_Airline
+  - Origin
+  - Dest
+  - CRSDepTime
+  - DepTime
+  - CRSArrTime
+  - ArrTime
+  - DepDelay
+  - ArrDelay
+  - Cancelled
+
+types:
+  FlightDate: object
+  Reporting_Airline: object
+  Origin: object
+  Dest: object
+  CRSDepTime: float64
+  DepTime: float64
+  CRSArrTime: float64
+  ArrTime: float64
+  DepDelay: float64
+  ArrDelay: float64
+  Cancelled: int64

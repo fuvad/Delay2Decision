@@ -1,0 +1,21 @@
+# data
+data/
+
+# trained models & arrays
+models/
+*.pkl
+*.joblib
+*.npy
+
+# reports / outputs
+reports/
+*.png
+*.csv
+
+# python junk
+__pycache__/
+.ipynb_checkpoints/
+
+# env
+.env
+venv/
