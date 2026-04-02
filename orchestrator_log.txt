@@ -1,0 +1,6423 @@
+﻿python : 2026/02/20 
+17:40:09 WARNING 
+mlflow.models.model: 
+`artifact_path` is 
+deprecated. Please use 
+`name` instead.
+At line:1 char:32
++ ... OENCODING='utf-8'; 
+python mlops/training/orche
+strator.py 2>&1 | Out-F ...
++                        ~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpecified: (202  
+  6/02/20 17:4...`name`    
+ instead.:String) [], R    
+emoteException
+    + FullyQualifiedErrorI 
+   d : NativeCommandError
+ 
+2026/02/20 17:40:28 INFO 
+mlflow.tracking.fluent: 
+Experiment with name 
+'congestion-forecaster' 
+does not exist. Creating a 
+new experiment.
+2026/02/20 17:40:28 
+WARNING 
+mlflow.models.model: 
+`artifact_path` is 
+deprecated. Please use 
+`name` instead.
+2026/02/20 17:40:33 INFO 
+mlflow.tracking.fluent: 
+Experiment with name 
+'anomaly-detector' does 
+not exist. Creating a new 
+experiment.
+2026/02/20 17:40:34 
+WARNING 
+mlflow.models.model: 
+`artifact_path` is 
+deprecated. Please use 
+`name` instead.
+2026/02/20 17:40:38 INFO 
+mlflow.tracking.fluent: 
+Experiment with name 
+'buffer-model' does not 
+exist. Creating a new 
+experiment.
+2026/02/20 17:41:09 
+WARNING 
+mlflow.models.model: 
+`artifact_path` is 
+deprecated. Please use 
+`name` instead.
+2026/02/20 17:41:18 INFO 
+mlflow.tracking.fluent: 
+Experiment with name 
+'calibration' does not 
+exist. Creating a new 
+experiment.
+2026/02/20 17:41:18 
+WARNING 
+mlflow.models.model: 
+`artifact_path` is 
+deprecated. Please use 
+`name` instead.
+
+  Delay2Decision - MLOps Pipeline Orchestrator
+  ==================================================
+  Stages: 17
+
+
+____________________________________________________________
+  >>  Stage  1/17  Data Ingestion
+____________________________________________________________
+
+============================================================
+INGESTION SERVICE ΓÇö Loading silver data
+============================================================
+  Loaded 10,837 rows spanning 2023-01-01 -> 2023-01-31
+  Terminals: [4, 5, 7, 8]
+  Saved ΓåÆ data\processed\silver_validated.csv
+
+  <<   1/17  Data Ingestion completed in 0.1s
+
+____________________________________________________________
+  >>  Stage  2/17  Congestion Feature Eng.
+____________________________________________________________
+
+============================================================
+CONGESTION FE SERVICE ΓÇö Building congestion features
+============================================================
+  -> Rolling origin delay
+  -> Time congestion (airport-wide hourly volume)
+  -> Terminal congestion
+  -> Spatial congestion (per-terminal gate density)
+  Saved -> jfk_congestion_features.csv
+  -> Building congestion forecast features
+  Saved -> jfk_congestion_forecast_features.csv  (10757 rows)
+
+  Congestion score range: [0.094, 1.000]
+
+  <<   2/17  Congestion Feature Eng. completed in 0.4s
+
+____________________________________________________________
+  >>  Stage  3/17  Delay Feature Eng.
+____________________________________________________________
+
+============================================================
+FEATURE ENGINEERING SERVICE - Building gold features
+============================================================
+
+ -> Time features
+ -> Weather severity
+ -> Per-terminal rolling features
+ -> Congestion score merge
+ Merged via (timestamp, terminal) key
+ -> Delay rate: 22.30%
+
+ -> Temporal train/test split (80% / 20% by date)
+    Train: up to 2023-01-24  (16,606 rows)
+    Test:  after 2023-01-24 (5,263 rows)
+ -> Carrier / route averages (train-only)
+
+  Train shape: (16478, 10)  |  delay rate: 22.32%
+  Test  shape: (5263, 10)   |  delay rate: 22.29%
+  Saved ΓåÆ delay_features_train.csv, delay_features_test.csv
+
+  <<   3/17  Delay Feature Eng. completed in 0.2s
+
+____________________________________________________________
+  >>  Stage  4/17  Buffer Feature Eng.
+____________________________________________________________
+
+============================================================
+BUFFER FE SERVICE ΓÇö Building buffer training features
+============================================================
+  Buffer features saved -> jfk_buffer_training.csv  (11322951 rows)
+  Buffer range: [18.1, 59.7] minutes
+
+  <<   4/17  Buffer Feature Eng. completed in 35.3s
+
+____________________________________________________________
+  >>  Stage  5/17  Delay Model Training
+____________________________________________________________
+
+============================================================
+TRAINING SERVICE - Training & selecting champion model
+============================================================
+  Train shape: (16478, 9)  |  delay rate: 22.32%
+  Test  shape: (5263, 9)   |  delay rate: 22.29%
+
+ Training candidates ΓÇª
+    GradientBoosting       AUC = 0.6070
+    RandomForest           AUC = 0.6011
+    LogisticRegression     AUC = 0.5916
+
+  Champion: GradientBoosting  (AUC = 0.6070)
+  Model saved -> delay_model_fixed.pkl
+  Metrics saved ΓåÆ training_metrics.json
+
+  <<   5/17  Delay Model Training completed in 25.5s
+
+____________________________________________________________
+  >>  Stage  6/17  Congestion Forecaster
+____________________________________________________________
+
+============================================================
+CONGESTION FORECASTER SERVICE ΓÇö Training
+============================================================
+  Train: 8605  |  Test: 2152
+  Training XGBoost congestion forecaster ...
+  RMSE : 0.0611
+  R2   : 0.6900
+  Model saved -> congestion_forecaster.pkl
+
+  <<   6/17  Congestion Forecaster completed in 5.7s
+
+____________________________________________________________
+  >>  Stage  7/17  Anomaly Detector
+____________________________________________________________
+
+============================================================
+ANOMALY DETECTOR SERVICE ΓÇö Training
+============================================================
+  Training on 10761 rows  |  features: ['hour', 'rolling_origin_delay', 'congestion_score']
+  Anomalies detected: 537 (5.0%)
+  Model saved -> anomaly_detector.pkl
+
+  <<   7/17  Anomaly Detector completed in 4.9s
+
+____________________________________________________________
+  >>  Stage  8/17  Buffer Model Training
+____________________________________________________________
+
+============================================================
+BUFFER MODEL SERVICE ΓÇö Training
+============================================================
+  Train: 9058360  |  Test: 2264591
+  Training XGBoost buffer model ...
+  RMSE : 0.24 min
+  MAE  : 0.19 min
+  R2   : 0.9964
+  Model saved -> buffer_model.pkl
+
+  <<   8/17  Buffer Model Training completed in 39.6s
+
+____________________________________________________________
+  >>  Stage  9/17  Calibration
+____________________________________________________________
+
+============================================================
+CALIBRATION SERVICE ΓÇö Calibrating delay model probabilities
+============================================================
+  Pre-calibration  AUC: 0.6070  |  Brier: 0.1762
+  Calibrating probabilities (Platt scaling) ...
+  Post-calibration AUC: 0.6070  |  Brier: 0.1665
+  Saved -> delay_model_calibrated.pkl
+
+  <<   9/17  Calibration completed in 8.0s
+
+____________________________________________________________
+  >>  Stage 10/17  Uncertainty Estimation
+____________________________________________________________
+
+============================================================
+UNCERTAINTY SERVICE - Bootstrap uncertainty estimation
+============================================================
+  Running 15 bootstrap iterations on 5263 samples ...
+  Mean uncertainty (std): 0.1415
+  Max  uncertainty (std): 0.3031
+  Saved -> uncertainty_stats.npy
+
+  <<  10/17  Uncertainty Estimation completed in 0.6s
+
+____________________________________________________________
+  >>  Stage 11/17  Delay Prediction
+____________________________________________________________
+
+============================================================
+PREDICTION SERVICE ΓÇö Scoring test set & saving predictions
+============================================================
+
+  AUC-ROC : 0.6070
+
+  Classification Report (threshold = 0.25):
+              precision    recall  f1-score   support
+
+     on-time       0.80      0.88      0.84      4090
+     delayed       0.36      0.25      0.29      1173
+
+    accuracy                           0.74      5263
+   macro avg       0.58      0.56      0.57      5263
+weighted avg       0.70      0.74      0.72      5263
+
+  Delay rate by risk bucket:
+bucket
+low       0.202970
+medium    0.269231
+high      0.550661
+
+  Predictions saved -> delay_predictions.csv  (is_delayed label included)
+
+  <<  11/17  Delay Prediction completed in 0.1s
+
+____________________________________________________________
+  >>  Stage 12/17  SHAP Explainability
+____________________________________________________________
+
+============================================================
+SHAP SERVICE ΓÇö Model explainability analysis
+============================================================
+  Running SHAP on 2000 samples ...
+
+ExactExplainer explainer:  
+ 0%|          | 1/2000 
+[00:00<?, ?it/s]
+ExactExplainer explainer:  
+ 0%|          | 3/2000 
+[00:10<02:02, 16.27it/s]
+ExactExplainer explainer:  
+ 0%|          | 5/2000 
+[00:10<03:09, 10.51it/s]
+ExactExplainer explainer:  
+ 0%|          | 7/2000 
+[00:10<03:38,  9.14it/s]
+ExactExplainer explainer:  
+ 0%|          | 8/2000 
+[00:10<03:45,  8.85it/s]
+ExactExplainer explainer:  
+ 0%|          | 9/2000 
+[00:11<03:50,  8.65it/s]
+ExactExplainer explainer:  
+ 0%|          | 10/2000 
+[00:11<03:55,  8.47it/s]
+ExactExplainer explainer:  
+ 1%|          | 11/2000 
+[00:11<03:57,  8.36it/s]
+ExactExplainer explainer:  
+ 1%|          | 12/2000 
+[00:11<03:58,  8.34it/s]
+ExactExplainer explainer:  
+ 1%|          | 13/2000 
+[00:11<04:00,  8.26it/s]
+ExactExplainer explainer:  
+ 1%|          | 14/2000 
+[00:11<04:04,  8.11it/s]
+ExactExplainer explainer:  
+ 1%|          | 15/2000 
+[00:11<04:09,  7.95it/s]
+ExactExplainer explainer:  
+ 1%|          | 16/2000 
+[00:11<04:10,  7.91it/s]
+ExactExplainer explainer:  
+ 1%|          | 17/2000 
+[00:12<04:08,  7.98it/s]
+ExactExplainer explainer:  
+ 1%|          | 18/2000 
+[00:12<04:08,  7.97it/s]
+ExactExplainer explainer:  
+ 1%|          | 19/2000 
+[00:12<04:07,  8.01it/s]
+ExactExplainer explainer:  
+ 1%|          | 20/2000 
+[00:12<04:01,  8.19it/s]
+ExactExplainer explainer:  
+ 1%|          | 21/2000 
+[00:12<04:02,  8.15it/s]
+ExactExplainer explainer:  
+ 1%|          | 22/2000 
+[00:12<04:04,  8.08it/s]
+ExactExplainer explainer:  
+ 1%|          | 23/2000 
+[00:12<04:08,  7.95it/s]
+ExactExplainer explainer:  
+ 1%|          | 24/2000 
+[00:12<04:09,  7.92it/s]
+ExactExplainer explainer:  
+ 1%|ΓûÅ         | 25/2000 
+[00:13<04:07,  7.98it/s]
+ExactExplainer explainer:  
+ 1%|ΓûÅ         | 26/2000 
+[00:13<04:03,  8.10it/s]
+ExactExplainer explainer:  
+ 1%|ΓûÅ         | 27/2000 
+[00:13<04:01,  8.16it/s]
+ExactExplainer explainer:  
+ 1%|ΓûÅ         | 28/2000 
+[00:13<04:04,  8.08it/s]
+ExactExplainer explainer:  
+ 1%|ΓûÅ         | 29/2000 
+[00:13<04:08,  7.94it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 30/2000 
+[00:13<04:09,  7.89it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 31/2000 
+[00:13<04:07,  7.95it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 32/2000 
+[00:13<04:08,  7.91it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 33/2000 
+[00:14<04:08,  7.93it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 34/2000 
+[00:14<04:06,  7.96it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 35/2000 
+[00:14<04:09,  7.87it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 36/2000 
+[00:14<04:12,  7.78it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 37/2000 
+[00:14<04:11,  7.82it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 38/2000 
+[00:14<04:12,  7.76it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 39/2000 
+[00:14<04:12,  7.77it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 40/2000 
+[00:14<04:09,  7.84it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 41/2000 
+[00:15<04:04,  8.01it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 42/2000 
+[00:15<04:05,  7.98it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 43/2000 
+[00:15<04:04,  8.02it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 44/2000 
+[00:15<04:09,  7.84it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 45/2000 
+[00:15<04:10,  7.80it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 46/2000 
+[00:15<04:05,  7.94it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 47/2000 
+[00:15<04:06,  7.94it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 48/2000 
+[00:15<04:01,  8.09it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÅ         | 49/2000 
+[00:16<03:58,  8.19it/s]
+ExactExplainer explainer:  
+ 2%|ΓûÄ         | 50/2000 
+[00:16<03:52,  8.40it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 51/2000 
+[00:16<03:55,  8.28it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 52/2000 
+[00:16<03:58,  8.16it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 53/2000 
+[00:16<04:02,  8.04it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 54/2000 
+[00:16<03:59,  8.13it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 55/2000 
+[00:16<03:58,  8.16it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 56/2000 
+[00:16<04:01,  8.06it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 57/2000 
+[00:17<04:02,  8.02it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 58/2000 
+[00:17<04:01,  8.03it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 59/2000 
+[00:17<04:02,  8.01it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 60/2000 
+[00:17<04:04,  7.92it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 61/2000 
+[00:17<04:01,  8.02it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 62/2000 
+[00:17<03:58,  8.12it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 63/2000 
+[00:17<03:59,  8.10it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 64/2000 
+[00:17<04:02,  7.97it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 65/2000 
+[00:18<04:22,  7.38it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 66/2000 
+[00:18<04:15,  7.58it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 67/2000 
+[00:18<04:14,  7.60it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 68/2000 
+[00:18<04:06,  7.84it/s]
+ExactExplainer explainer:  
+ 3%|ΓûÄ         | 69/2000 
+[00:18<04:06,  7.85it/s]
+ExactExplainer explainer:  
+ 4%|ΓûÄ         | 70/2000 
+[00:18<04:03,  7.91it/s]
+ExactExplainer explainer:  
+ 4%|ΓûÄ         | 71/2000 
+[00:18<04:05,  7.85it/s]
+ExactExplainer explainer:  
+ 4%|ΓûÄ         | 72/2000 
+[00:18<04:03,  7.91it/s]
+ExactExplainer explainer:  
+ 4%|ΓûÄ         | 73/2000 
+[00:19<03:58,  8.06it/s]
+ExactExplainer explainer:  
+ 4%|ΓûÄ         | 74/2000 
+[00:19<04:00,  8.02it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 75/2000 
+[00:19<03:58,  8.07it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 76/2000 
+[00:19<03:57,  8.10it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 77/2000 
+[00:19<04:05,  7.84it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 78/2000 
+[00:19<03:59,  8.03it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 79/2000 
+[00:19<04:01,  7.95it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 80/2000 
+[00:19<04:05,  7.82it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 81/2000 
+[00:20<04:06,  7.78it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 82/2000 
+[00:20<04:05,  7.83it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 83/2000 
+[00:20<04:04,  7.83it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 84/2000 
+[00:20<04:02,  7.90it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 85/2000 
+[00:20<04:02,  7.89it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 86/2000 
+[00:20<03:55,  8.11it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 87/2000 
+[00:20<04:02,  7.90it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 88/2000 
+[00:20<04:07,  7.73it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 89/2000 
+[00:21<03:58,  8.02it/s]
+ExactExplainer explainer:  
+ 4%|Γûì         | 90/2000 
+[00:21<04:13,  7.55it/s]
+ExactExplainer explainer:  
+ 5%|Γûì         | 91/2000 
+[00:21<04:14,  7.49it/s]
+ExactExplainer explainer:  
+ 5%|Γûì         | 92/2000 
+[00:21<04:03,  7.84it/s]
+ExactExplainer explainer:  
+ 5%|Γûì         | 93/2000 
+[00:21<04:06,  7.74it/s]
+ExactExplainer explainer:  
+ 5%|Γûì         | 94/2000 
+[00:21<04:05,  7.77it/s]
+ExactExplainer explainer:  
+ 5%|Γûì         | 95/2000 
+[00:21<04:05,  7.75it/s]
+ExactExplainer explainer:  
+ 5%|Γûì         | 96/2000 
+[00:22<04:08,  7.66it/s]
+ExactExplainer explainer:  
+ 5%|Γûì         | 97/2000 
+[00:22<04:06,  7.71it/s]
+ExactExplainer explainer:  
+ 5%|Γûì         | 98/2000 
+[00:22<04:02,  7.85it/s]
+ExactExplainer explainer:  
+ 5%|Γûì         | 99/2000 
+[00:22<03:59,  7.93it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 100/2000 
+[00:22<04:00,  7.91it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 101/2000 
+[00:22<03:59,  7.92it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 102/2000 
+[00:22<03:57,  7.98it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 103/2000 
+[00:22<03:57,  8.00it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 104/2000 
+[00:23<04:12,  7.50it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 105/2000 
+[00:23<04:07,  7.66it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 106/2000 
+[00:23<04:11,  7.53it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 107/2000 
+[00:23<04:09,  7.58it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 108/2000 
+[00:23<04:06,  7.67it/s]
+ExactExplainer explainer:  
+ 5%|Γûî         | 109/2000 
+[00:23<03:59,  7.89it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 110/2000 
+[00:23<03:57,  7.96it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 111/2000 
+[00:23<03:57,  7.95it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 112/2000 
+[00:24<03:52,  8.10it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 113/2000 
+[00:24<03:51,  8.14it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 114/2000 
+[00:24<03:56,  7.97it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 115/2000 
+[00:24<03:56,  7.97it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 116/2000 
+[00:24<03:59,  7.87it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 117/2000 
+[00:24<03:57,  7.94it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 118/2000 
+[00:24<03:55,  8.00it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 119/2000 
+[00:24<03:55,  7.97it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 120/2000 
+[00:25<03:49,  8.18it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 121/2000 
+[00:25<03:49,  8.17it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 122/2000 
+[00:25<03:51,  8.10it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 123/2000 
+[00:25<03:53,  8.05it/s]
+ExactExplainer explainer:  
+ 6%|Γûî         | 124/2000 
+[00:25<03:49,  8.17it/s]
+ExactExplainer explainer:  
+ 6%|Γûï         | 125/2000 
+[00:25<03:48,  8.21it/s]
+ExactExplainer explainer:  
+ 6%|Γûï         | 126/2000 
+[00:25<03:46,  8.29it/s]
+ExactExplainer explainer:  
+ 6%|Γûï         | 127/2000 
+[00:25<03:39,  8.52it/s]
+ExactExplainer explainer:  
+ 6%|Γûï         | 128/2000 
+[00:26<03:46,  8.28it/s]
+ExactExplainer explainer:  
+ 6%|Γûï         | 129/2000 
+[00:26<03:43,  8.39it/s]
+ExactExplainer explainer:  
+ 6%|Γûï         | 130/2000 
+[00:26<03:40,  8.48it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 131/2000 
+[00:26<03:36,  8.63it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 132/2000 
+[00:26<03:33,  8.76it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 133/2000 
+[00:26<03:32,  8.77it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 134/2000 
+[00:26<03:25,  9.06it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 135/2000 
+[00:26<03:23,  9.18it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 136/2000 
+[00:26<03:22,  9.21it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 138/2000 
+[00:27<03:18,  9.38it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 139/2000 
+[00:27<03:18,  9.40it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 140/2000 
+[00:27<03:21,  9.24it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 141/2000 
+[00:27<03:20,  9.26it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 142/2000 
+[00:27<03:17,  9.40it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 143/2000 
+[00:27<03:20,  9.28it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 144/2000 
+[00:27<03:21,  9.23it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 145/2000 
+[00:27<03:23,  9.11it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 146/2000 
+[00:27<03:18,  9.32it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 147/2000 
+[00:28<03:24,  9.07it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 148/2000 
+[00:28<03:22,  9.13it/s]
+ExactExplainer explainer:  
+ 7%|Γûï         | 149/2000 
+[00:28<03:23,  9.11it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 150/2000 
+[00:28<03:22,  9.14it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 151/2000 
+[00:28<03:31,  8.75it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 152/2000 
+[00:28<03:29,  8.83it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 153/2000 
+[00:28<03:27,  8.89it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 154/2000 
+[00:28<03:30,  8.79it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 155/2000 
+[00:29<03:31,  8.71it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 156/2000 
+[00:29<03:28,  8.86it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 157/2000 
+[00:29<03:25,  8.99it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 158/2000 
+[00:29<03:23,  9.06it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 159/2000 
+[00:29<03:22,  9.07it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 160/2000 
+[00:29<03:22,  9.09it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 161/2000 
+[00:29<03:23,  9.03it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 162/2000 
+[00:29<03:19,  9.19it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 163/2000 
+[00:29<03:18,  9.27it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 164/2000 
+[00:29<03:18,  9.24it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 165/2000 
+[00:30<03:20,  9.15it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 166/2000 
+[00:30<03:23,  9.03it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 167/2000 
+[00:30<03:26,  8.88it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 168/2000 
+[00:30<03:27,  8.83it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 169/2000 
+[00:30<03:25,  8.90it/s]
+ExactExplainer explainer:  
+ 8%|Γûè         | 170/2000 
+[00:30<03:19,  9.20it/s]
+ExactExplainer explainer:  
+ 9%|Γûè         | 171/2000 
+[00:30<03:17,  9.25it/s]
+ExactExplainer explainer:  
+ 9%|Γûè         | 172/2000 
+[00:30<03:18,  9.19it/s]
+ExactExplainer explainer:  
+ 9%|Γûè         | 173/2000 
+[00:30<03:20,  9.10it/s]
+ExactExplainer explainer:  
+ 9%|Γûè         | 174/2000 
+[00:31<03:21,  9.04it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 175/2000 
+[00:31<03:22,  9.03it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 176/2000 
+[00:31<03:20,  9.12it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 177/2000 
+[00:31<03:18,  9.18it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 178/2000 
+[00:31<03:17,  9.22it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 179/2000 
+[00:31<03:16,  9.27it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 180/2000 
+[00:31<03:22,  8.99it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 181/2000 
+[00:31<03:21,  9.04it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 182/2000 
+[00:31<03:23,  8.93it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 183/2000 
+[00:32<03:23,  8.95it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 184/2000 
+[00:32<03:18,  9.15it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 185/2000 
+[00:32<03:17,  9.19it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 186/2000 
+[00:32<03:19,  9.09it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 187/2000 
+[00:32<03:22,  8.97it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 188/2000 
+[00:32<03:18,  9.12it/s]
+ExactExplainer explainer:  
+ 9%|Γûë         | 189/2000 
+[00:32<03:19,  9.08it/s]
+ExactExplainer explainer:  
+10%|Γûë         | 190/2000 
+[00:32<03:18,  9.11it/s]
+ExactExplainer explainer:  
+10%|Γûë         | 191/2000 
+[00:32<03:22,  8.93it/s]
+ExactExplainer explainer:  
+10%|Γûë         | 192/2000 
+[00:33<03:19,  9.08it/s]
+ExactExplainer explainer:  
+10%|Γûë         | 193/2000 
+[00:33<03:17,  9.14it/s]
+ExactExplainer explainer:  
+10%|Γûë         | 194/2000 
+[00:33<03:22,  8.91it/s]
+ExactExplainer explainer:  
+10%|Γûë         | 195/2000 
+[00:33<03:20,  8.99it/s]
+ExactExplainer explainer:  
+10%|Γûë         | 196/2000 
+[00:33<03:24,  8.81it/s]
+ExactExplainer explainer:  
+10%|Γûë         | 197/2000 
+[00:33<03:19,  9.05it/s]
+ExactExplainer explainer:  
+10%|Γûë         | 199/2000 
+[00:33<03:15,  9.20it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 200/2000 
+[00:33<03:13,  9.31it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 201/2000 
+[00:34<03:10,  9.42it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 202/2000 
+[00:34<03:10,  9.42it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 203/2000 
+[00:34<03:11,  9.38it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 204/2000 
+[00:34<03:10,  9.43it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 205/2000 
+[00:34<03:09,  9.48it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 206/2000 
+[00:34<03:11,  9.37it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 207/2000 
+[00:34<03:11,  9.37it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 208/2000 
+[00:34<03:08,  9.52it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 209/2000 
+[00:34<03:06,  9.58it/s]
+ExactExplainer explainer:  
+10%|Γûê         | 210/2000 
+[00:35<03:10,  9.42it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 212/2000 
+[00:35<03:00,  9.88it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 213/2000 
+[00:35<03:02,  9.78it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 214/2000 
+[00:35<03:05,  9.61it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 215/2000 
+[00:35<03:10,  9.36it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 216/2000 
+[00:35<03:07,  9.52it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 217/2000 
+[00:35<03:12,  9.25it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 218/2000 
+[00:35<03:13,  9.20it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 219/2000 
+[00:35<03:10,  9.35it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 220/2000 
+[00:36<03:11,  9.31it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 221/2000 
+[00:36<03:13,  9.17it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 222/2000 
+[00:36<03:13,  9.18it/s]
+ExactExplainer explainer:  
+11%|Γûê         | 224/2000 
+[00:36<03:05,  9.57it/s]
+ExactExplainer explainer:  
+11%|ΓûêΓûÅ        | 
+225/2000 [00:36<03:04,  
+9.64it/s]
+ExactExplainer explainer:  
+11%|ΓûêΓûÅ        | 
+226/2000 [00:36<03:07,  
+9.45it/s]
+ExactExplainer explainer:  
+11%|ΓûêΓûÅ        | 
+227/2000 [00:36<03:07,  
+9.46it/s]
+ExactExplainer explainer:  
+11%|ΓûêΓûÅ        | 
+228/2000 [00:36<03:16,  
+9.03it/s]
+ExactExplainer explainer:  
+11%|ΓûêΓûÅ        | 
+229/2000 [00:37<03:15,  
+9.07it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+230/2000 [00:37<03:15,  
+9.03it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+231/2000 [00:37<03:11,  
+9.23it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+233/2000 [00:37<03:13,  
+9.15it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+234/2000 [00:37<03:11,  
+9.22it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+235/2000 [00:37<03:11,  
+9.24it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+236/2000 [00:37<03:07,  
+9.41it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+237/2000 [00:37<03:10,  
+9.27it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+238/2000 [00:38<03:12,  
+9.15it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+239/2000 [00:38<03:07,  
+9.37it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+240/2000 [00:38<03:09,  
+9.27it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+241/2000 [00:38<03:10,  
+9.21it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+242/2000 [00:38<03:12,  
+9.14it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+243/2000 [00:38<03:11,  
+9.15it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+244/2000 [00:38<03:11,  
+9.19it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+245/2000 [00:38<03:12,  
+9.10it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+246/2000 [00:38<03:10,  
+9.19it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+247/2000 [00:38<03:10,  
+9.21it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+248/2000 [00:39<03:11,  
+9.15it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÅ        | 
+249/2000 [00:39<03:06,  
+9.38it/s]
+ExactExplainer explainer:  
+12%|ΓûêΓûÄ        | 
+250/2000 [00:39<03:09,  
+9.22it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+251/2000 [00:39<03:08,  
+9.28it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+252/2000 [00:39<03:06,  
+9.37it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+253/2000 [00:39<03:05,  
+9.40it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+254/2000 [00:39<03:06,  
+9.36it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+255/2000 [00:39<03:07,  
+9.29it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+256/2000 [00:39<03:08,  
+9.25it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+257/2000 [00:40<03:08,  
+9.27it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+258/2000 [00:40<03:11,  
+9.09it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+259/2000 [00:40<03:13,  
+9.00it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+260/2000 [00:40<03:13,  
+9.01it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+261/2000 [00:40<03:13,  
+8.99it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+262/2000 [00:40<03:14,  
+8.95it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+263/2000 [00:40<03:17,  
+8.79it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+264/2000 [00:40<03:11,  
+9.08it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+265/2000 [00:40<03:08,  
+9.21it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+266/2000 [00:41<03:09,  
+9.16it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+267/2000 [00:41<03:09,  
+9.12it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+268/2000 [00:41<03:11,  
+9.03it/s]
+ExactExplainer explainer:  
+13%|ΓûêΓûÄ        | 
+269/2000 [00:41<03:10,  
+9.08it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûÄ        | 
+270/2000 [00:41<03:08,  
+9.19it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûÄ        | 
+271/2000 [00:41<03:09,  
+9.12it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûÄ        | 
+272/2000 [00:41<03:12,  
+8.96it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûÄ        | 
+273/2000 [00:41<03:10,  
+9.04it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûÄ        | 
+274/2000 [00:41<03:13,  
+8.94it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+275/2000 [00:42<03:11,  
+9.02it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+276/2000 [00:42<03:12,  
+8.98it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+277/2000 [00:42<03:08,  
+9.13it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+278/2000 [00:42<03:10,  
+9.05it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+279/2000 [00:42<03:06,  
+9.21it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+280/2000 [00:42<03:04,  
+9.31it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+282/2000 [00:42<03:03,  
+9.36it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+283/2000 [00:42<03:07,  
+9.16it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+284/2000 [00:43<03:06,  
+9.18it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+285/2000 [00:43<03:08,  
+9.10it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+286/2000 [00:43<03:06,  
+9.17it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+287/2000 [00:43<03:05,  
+9.22it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+288/2000 [00:43<03:06,  
+9.18it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+289/2000 [00:43<03:07,  
+9.10it/s]
+ExactExplainer explainer:  
+14%|ΓûêΓûì        | 
+290/2000 [00:43<03:03,  
+9.31it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûì        | 
+291/2000 [00:43<03:04,  
+9.28it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûì        | 
+292/2000 [00:43<03:02,  
+9.37it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûì        | 
+293/2000 [00:44<03:01,  
+9.40it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûì        | 
+294/2000 [00:44<03:02,  
+9.37it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûì        | 
+295/2000 [00:44<03:00,  
+9.45it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûì        | 
+296/2000 [00:44<02:59,  
+9.50it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûì        | 
+297/2000 [00:44<02:57,  
+9.58it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûì        | 
+298/2000 [00:44<03:00,  
+9.44it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûì        | 
+299/2000 [00:44<03:01,  
+9.39it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûî        | 
+300/2000 [00:44<03:01,  
+9.37it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûî        | 
+301/2000 [00:44<02:59,  
+9.44it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûî        | 
+302/2000 [00:44<02:58,  
+9.54it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûî        | 
+304/2000 [00:45<02:53,  
+9.78it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûî        | 
+305/2000 [00:45<02:56,  
+9.59it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûî        | 
+306/2000 [00:45<02:55,  
+9.68it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûî        | 
+307/2000 [00:45<02:58,  
+9.47it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûî        | 
+308/2000 [00:45<02:59,  
+9.41it/s]
+ExactExplainer explainer:  
+15%|ΓûêΓûî        | 
+309/2000 [00:45<02:58,  
+9.48it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+310/2000 [00:45<02:59,  
+9.40it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+311/2000 [00:45<02:57,  
+9.54it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+312/2000 [00:46<02:56,  
+9.57it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+313/2000 [00:46<02:56,  
+9.58it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+314/2000 [00:46<02:58,  
+9.46it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+315/2000 [00:46<03:00,  
+9.34it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+316/2000 [00:46<03:02,  
+9.21it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+317/2000 [00:46<02:59,  
+9.39it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+318/2000 [00:46<03:01,  
+9.24it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+319/2000 [00:46<02:58,  
+9.40it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+320/2000 [00:46<02:56,  
+9.53it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+321/2000 [00:46<02:55,  
+9.55it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+322/2000 [00:47<02:56,  
+9.52it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+323/2000 [00:47<02:55,  
+9.57it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûî        | 
+324/2000 [00:47<02:56,  
+9.49it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûï        | 
+326/2000 [00:47<02:57,  
+9.46it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûï        | 
+327/2000 [00:47<02:58,  
+9.36it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûï        | 
+328/2000 [00:47<02:57,  
+9.44it/s]
+ExactExplainer explainer:  
+16%|ΓûêΓûï        | 
+329/2000 [00:47<02:55,  
+9.50it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+331/2000 [00:48<02:51,  
+9.75it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+332/2000 [00:48<02:55,  
+9.49it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+334/2000 [00:48<02:53,  
+9.61it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+335/2000 [00:48<02:53,  
+9.61it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+336/2000 [00:48<02:53,  
+9.58it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+337/2000 [00:48<02:55,  
+9.48it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+339/2000 [00:48<02:54,  
+9.54it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+340/2000 [00:48<02:55,  
+9.47it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+341/2000 [00:49<02:55,  
+9.47it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+342/2000 [00:49<02:52,  
+9.60it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+343/2000 [00:49<02:52,  
+9.61it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+344/2000 [00:49<02:52,  
+9.60it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+345/2000 [00:49<02:55,  
+9.41it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+346/2000 [00:49<02:52,  
+9.57it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+348/2000 [00:49<02:49,  
+9.76it/s]
+ExactExplainer explainer:  
+17%|ΓûêΓûï        | 
+349/2000 [00:49<02:50,  
+9.71it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+350/2000 [00:49<02:49,  
+9.71it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+351/2000 [00:50<02:54,  
+9.43it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+353/2000 [00:50<02:56,  
+9.35it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+354/2000 [00:50<02:55,  
+9.37it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+355/2000 [00:50<02:55,  
+9.40it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+356/2000 [00:50<02:55,  
+9.35it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+357/2000 [00:50<02:56,  
+9.32it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+358/2000 [00:50<02:56,  
+9.31it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+359/2000 [00:50<02:52,  
+9.49it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+360/2000 [00:51<02:54,  
+9.39it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+361/2000 [00:51<02:56,  
+9.29it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+362/2000 [00:51<02:59,  
+9.13it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+363/2000 [00:51<02:54,  
+9.37it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+364/2000 [00:51<02:57,  
+9.22it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+365/2000 [00:51<02:58,  
+9.15it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+366/2000 [00:51<02:54,  
+9.34it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+367/2000 [00:51<02:56,  
+9.25it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+368/2000 [00:51<02:58,  
+9.13it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+369/2000 [00:52<02:59,  
+9.08it/s]
+ExactExplainer explainer:  
+18%|ΓûêΓûè        | 
+370/2000 [00:52<02:55,  
+9.29it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûè        | 
+371/2000 [00:52<02:59,  
+9.09it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûè        | 
+372/2000 [00:52<02:54,  
+9.34it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûè        | 
+373/2000 [00:52<02:54,  
+9.32it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûè        | 
+374/2000 [00:52<03:03,  
+8.85it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+375/2000 [00:52<03:11,  
+8.47it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+376/2000 [00:52<03:06,  
+8.70it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+377/2000 [00:52<02:59,  
+9.05it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+378/2000 [00:53<03:00,  
+8.99it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+380/2000 [00:53<02:56,  
+9.18it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+381/2000 [00:53<02:54,  
+9.26it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+382/2000 [00:53<02:53,  
+9.31it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+383/2000 [00:53<02:53,  
+9.34it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+384/2000 [00:53<02:53,  
+9.34it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+385/2000 [00:53<02:53,  
+9.30it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+386/2000 [00:53<02:52,  
+9.35it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+387/2000 [00:54<02:49,  
+9.51it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+388/2000 [00:54<02:54,  
+9.21it/s]
+ExactExplainer explainer:  
+19%|ΓûêΓûë        | 
+389/2000 [00:54<02:58,  
+9.01it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+390/2000 [00:54<02:54,  
+9.23it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+391/2000 [00:54<02:53,  
+9.28it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+392/2000 [00:54<02:51,  
+9.37it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+393/2000 [00:54<02:49,  
+9.45it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+394/2000 [00:54<02:49,  
+9.49it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+395/2000 [00:54<02:50,  
+9.42it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+396/2000 [00:54<02:49,  
+9.49it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+397/2000 [00:55<02:49,  
+9.47it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+398/2000 [00:55<02:50,  
+9.41it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûë        | 
+399/2000 [00:55<02:49,  
+9.42it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûê        | 
+400/2000 [00:55<02:52,  
+9.26it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûê        | 
+401/2000 [00:55<02:55,  
+9.13it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûê        | 
+403/2000 [00:55<02:54,  
+9.15it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûê        | 
+404/2000 [00:55<02:52,  
+9.26it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûê        | 
+405/2000 [00:55<02:49,  
+9.39it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûê        | 
+406/2000 [00:56<02:48,  
+9.47it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûê        | 
+408/2000 [00:56<02:47,  
+9.49it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûê        | 
+409/2000 [00:56<02:47,  
+9.50it/s]
+ExactExplainer explainer:  
+20%|ΓûêΓûê        | 
+410/2000 [00:56<02:52,  
+9.21it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+411/2000 [00:56<02:51,  
+9.28it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+412/2000 [00:56<02:51,  
+9.28it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+413/2000 [00:56<02:47,  
+9.47it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+414/2000 [00:56<02:48,  
+9.42it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+415/2000 [00:56<02:47,  
+9.45it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+416/2000 [00:57<02:46,  
+9.50it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+417/2000 [00:57<02:46,  
+9.52it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+418/2000 [00:57<02:48,  
+9.39it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+420/2000 [00:57<02:45,  
+9.55it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+421/2000 [00:57<02:45,  
+9.53it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+422/2000 [00:57<02:43,  
+9.65it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+423/2000 [00:57<02:43,  
+9.64it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûê        | 
+424/2000 [00:57<02:43,  
+9.66it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûêΓûÅ       | 
+425/2000 [00:58<02:42,  
+9.71it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûêΓûÅ       | 
+426/2000 [00:58<02:45,  
+9.49it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûêΓûÅ       | 
+427/2000 [00:58<02:44,  
+9.57it/s]
+ExactExplainer explainer:  
+21%|ΓûêΓûêΓûÅ       | 
+429/2000 [00:58<02:46,  
+9.41it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+430/2000 [00:58<02:46,  
+9.43it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+431/2000 [00:58<02:48,  
+9.30it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+432/2000 [00:58<02:51,  
+9.15it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+433/2000 [00:58<02:52,  
+9.10it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+434/2000 [00:59<02:48,  
+9.28it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+435/2000 [00:59<03:01,  
+8.61it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+436/2000 [00:59<02:54,  
+8.95it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+437/2000 [00:59<02:57,  
+8.82it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+438/2000 [00:59<02:57,  
+8.82it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+439/2000 [00:59<02:56,  
+8.84it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+440/2000 [00:59<02:57,  
+8.77it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+441/2000 [00:59<02:55,  
+8.87it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+442/2000 [00:59<02:51,  
+9.09it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+443/2000 [01:00<02:52,  
+9.03it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+444/2000 [01:00<02:51,  
+9.06it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+445/2000 [01:00<02:49,  
+9.18it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+446/2000 [01:00<02:52,  
+8.99it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+447/2000 [01:00<02:56,  
+8.79it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+448/2000 [01:00<02:55,  
+8.83it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÅ       | 
+449/2000 [01:00<02:52,  
+8.99it/s]
+ExactExplainer explainer:  
+22%|ΓûêΓûêΓûÄ       | 
+450/2000 [01:00<02:51,  
+9.02it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+452/2000 [01:01<02:46,  
+9.29it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+453/2000 [01:01<02:48,  
+9.16it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+454/2000 [01:01<02:51,  
+9.02it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+455/2000 [01:01<02:50,  
+9.04it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+456/2000 [01:01<02:54,  
+8.85it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+457/2000 [01:01<02:50,  
+9.04it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+458/2000 [01:01<02:51,  
+8.99it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+459/2000 [01:01<02:52,  
+8.94it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+460/2000 [01:01<02:53,  
+8.90it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+461/2000 [01:02<02:52,  
+8.93it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+462/2000 [01:02<02:50,  
+9.02it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+463/2000 [01:02<02:47,  
+9.18it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+464/2000 [01:02<02:48,  
+9.09it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+465/2000 [01:02<02:53,  
+8.86it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+466/2000 [01:02<02:51,  
+8.94it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+467/2000 [01:02<02:53,  
+8.85it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+468/2000 [01:02<02:52,  
+8.86it/s]
+ExactExplainer explainer:  
+23%|ΓûêΓûêΓûÄ       | 
+469/2000 [01:02<02:48,  
+9.10it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûÄ       | 
+470/2000 [01:03<02:46,  
+9.20it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûÄ       | 
+471/2000 [01:03<02:45,  
+9.21it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûÄ       | 
+472/2000 [01:03<02:43,  
+9.33it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûÄ       | 
+473/2000 [01:03<02:42,  
+9.39it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûÄ       | 
+474/2000 [01:03<02:41,  
+9.43it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+475/2000 [01:03<02:44,  
+9.28it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+476/2000 [01:03<02:45,  
+9.21it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+477/2000 [01:03<02:45,  
+9.21it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+478/2000 [01:03<02:42,  
+9.39it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+479/2000 [01:03<02:40,  
+9.45it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+480/2000 [01:04<02:43,  
+9.27it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+481/2000 [01:04<02:45,  
+9.20it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+483/2000 [01:04<02:39,  
+9.50it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+484/2000 [01:04<02:41,  
+9.36it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+485/2000 [01:04<02:46,  
+9.08it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+486/2000 [01:04<02:44,  
+9.19it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+487/2000 [01:04<02:44,  
+9.21it/s]
+ExactExplainer explainer:  
+24%|ΓûêΓûêΓûì       | 
+489/2000 [01:05<02:40,  
+9.40it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûì       | 
+491/2000 [01:05<02:39,  
+9.47it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûì       | 
+492/2000 [01:05<02:43,  
+9.24it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûì       | 
+493/2000 [01:05<02:43,  
+9.24it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûì       | 
+494/2000 [01:05<02:43,  
+9.21it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûì       | 
+495/2000 [01:05<02:41,  
+9.32it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûì       | 
+496/2000 [01:05<02:42,  
+9.25it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûì       | 
+497/2000 [01:05<02:40,  
+9.35it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûì       | 
+498/2000 [01:06<02:42,  
+9.26it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûî       | 
+500/2000 [01:06<02:37,  
+9.51it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûî       | 
+501/2000 [01:06<02:38,  
+9.43it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûî       | 
+502/2000 [01:06<02:36,  
+9.55it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûî       | 
+504/2000 [01:06<02:38,  
+9.44it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûî       | 
+505/2000 [01:06<02:42,  
+9.22it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûî       | 
+506/2000 [01:06<02:41,  
+9.23it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûî       | 
+507/2000 [01:07<02:42,  
+9.20it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûî       | 
+508/2000 [01:07<02:40,  
+9.28it/s]
+ExactExplainer explainer:  
+25%|ΓûêΓûêΓûî       | 
+509/2000 [01:07<02:40,  
+9.28it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+510/2000 [01:07<02:44,  
+9.08it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+511/2000 [01:07<02:39,  
+9.33it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+512/2000 [01:07<02:41,  
+9.20it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+513/2000 [01:07<02:41,  
+9.22it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+515/2000 [01:07<02:38,  
+9.35it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+516/2000 [01:07<02:38,  
+9.37it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+517/2000 [01:08<02:41,  
+9.16it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+518/2000 [01:08<02:39,  
+9.28it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+519/2000 [01:08<02:37,  
+9.37it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+520/2000 [01:08<02:37,  
+9.40it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+521/2000 [01:08<02:36,  
+9.46it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+522/2000 [01:08<02:39,  
+9.24it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûî       | 
+524/2000 [01:08<02:37,  
+9.39it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûï       | 
+525/2000 [01:08<02:36,  
+9.41it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûï       | 
+526/2000 [01:09<02:38,  
+9.33it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûï       | 
+527/2000 [01:09<02:39,  
+9.24it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûï       | 
+528/2000 [01:09<02:37,  
+9.37it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûï       | 
+529/2000 [01:09<02:36,  
+9.38it/s]
+ExactExplainer explainer:  
+26%|ΓûêΓûêΓûï       | 
+530/2000 [01:09<02:36,  
+9.41it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+531/2000 [01:09<02:37,  
+9.33it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+532/2000 [01:09<02:38,  
+9.26it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+533/2000 [01:09<02:36,  
+9.39it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+534/2000 [01:09<02:38,  
+9.28it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+535/2000 [01:09<02:35,  
+9.41it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+536/2000 [01:10<02:36,  
+9.34it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+537/2000 [01:10<02:36,  
+9.33it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+538/2000 [01:10<02:37,  
+9.28it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+539/2000 [01:10<02:40,  
+9.07it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+540/2000 [01:10<02:39,  
+9.17it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+541/2000 [01:10<02:35,  
+9.35it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+542/2000 [01:10<02:35,  
+9.36it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+543/2000 [01:10<02:36,  
+9.29it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+545/2000 [01:11<02:34,  
+9.44it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+546/2000 [01:11<02:31,  
+9.57it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+547/2000 [01:11<02:39,  
+9.08it/s]
+ExactExplainer explainer:  
+27%|ΓûêΓûêΓûï       | 
+549/2000 [01:11<02:33,  
+9.44it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+550/2000 [01:11<02:33,  
+9.45it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+552/2000 [01:11<02:30,  
+9.62it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+554/2000 [01:12<02:27,  
+9.83it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+555/2000 [01:12<02:27,  
+9.82it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+556/2000 [01:12<02:28,  
+9.71it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+557/2000 [01:12<02:31,  
+9.53it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+559/2000 [01:12<02:28,  
+9.72it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+560/2000 [01:12<02:27,  
+9.78it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+561/2000 [01:12<02:28,  
+9.71it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+562/2000 [01:12<02:29,  
+9.60it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+564/2000 [01:13<02:28,  
+9.65it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+565/2000 [01:13<02:28,  
+9.67it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+566/2000 [01:13<02:27,  
+9.72it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+568/2000 [01:13<02:23,  
+9.95it/s]
+ExactExplainer explainer:  
+28%|ΓûêΓûêΓûè       | 
+569/2000 [01:13<02:26,  
+9.75it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûè       | 
+571/2000 [01:13<02:24,  
+9.86it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûè       | 
+572/2000 [01:13<02:27,  
+9.66it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûè       | 
+574/2000 [01:14<02:22,  
+9.99it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+575/2000 [01:14<02:23,  
+9.96it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+577/2000 [01:14<02:23,  
+9.92it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+578/2000 [01:14<02:25,  
+9.77it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+579/2000 [01:14<02:25,  
+9.77it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+580/2000 [01:14<02:24,  
+9.82it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+582/2000 [01:14<02:23,  
+9.89it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+583/2000 [01:14<02:25,  
+9.73it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+584/2000 [01:15<02:24,  
+9.79it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+585/2000 [01:15<02:23,  
+9.84it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+586/2000 [01:15<02:25,  
+9.69it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+588/2000 [01:15<02:23,  
+9.86it/s]
+ExactExplainer explainer:  
+29%|ΓûêΓûêΓûë       | 
+589/2000 [01:15<02:23,  
+9.84it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûë       | 
+590/2000 [01:15<02:24,  
+9.73it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûë       | 
+592/2000 [01:15<02:22,  
+9.85it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûë       | 
+593/2000 [01:15<02:25,  
+9.69it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûë       | 
+594/2000 [01:16<02:25,  
+9.68it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûë       | 
+595/2000 [01:16<02:27,  
+9.53it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûë       | 
+596/2000 [01:16<02:27,  
+9.51it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûë       | 
+598/2000 [01:16<02:23,  
+9.75it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûê       | 
+600/2000 [01:16<02:22,  
+9.84it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûê       | 
+601/2000 [01:16<02:22,  
+9.82it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûê       | 
+603/2000 [01:17<02:20,  
+9.95it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûê       | 
+605/2000 [01:17<02:18, 
+10.09it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûê       | 
+607/2000 [01:17<02:18, 
+10.06it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûê       | 
+609/2000 [01:17<02:18, 
+10.02it/s]
+ExactExplainer explainer:  
+30%|ΓûêΓûêΓûê       | 
+610/2000 [01:17<02:19,  
+9.96it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+611/2000 [01:17<02:20,  
+9.92it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+612/2000 [01:17<02:27,  
+9.40it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+613/2000 [01:18<02:51,  
+8.07it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+615/2000 [01:18<02:37,  
+8.78it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+616/2000 [01:18<02:36,  
+8.86it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+617/2000 [01:18<02:34,  
+8.97it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+619/2000 [01:18<02:26,  
+9.40it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+620/2000 [01:18<02:25,  
+9.51it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+621/2000 [01:18<02:27,  
+9.38it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+623/2000 [01:19<02:21,  
+9.72it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûê       | 
+624/2000 [01:19<02:20,  
+9.76it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûêΓûÅ      | 
+626/2000 [01:19<02:20,  
+9.80it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûêΓûÅ      | 
+628/2000 [01:19<02:19,  
+9.87it/s]
+ExactExplainer explainer:  
+31%|ΓûêΓûêΓûêΓûÅ      | 
+629/2000 [01:19<02:19,  
+9.84it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+631/2000 [01:19<02:18,  
+9.88it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+632/2000 [01:20<02:21,  
+9.65it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+634/2000 [01:20<02:18,  
+9.83it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+636/2000 [01:20<02:17,  
+9.95it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+637/2000 [01:20<02:18,  
+9.82it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+638/2000 [01:20<02:20,  
+9.72it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+640/2000 [01:20<02:18,  
+9.83it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+641/2000 [01:20<02:27,  
+9.23it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+642/2000 [01:21<02:25,  
+9.32it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+643/2000 [01:21<02:23,  
+9.44it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+644/2000 [01:21<02:25,  
+9.29it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+645/2000 [01:21<02:25,  
+9.30it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+646/2000 [01:21<02:25,  
+9.31it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+648/2000 [01:21<02:19,  
+9.68it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÅ      | 
+649/2000 [01:21<02:19,  
+9.66it/s]
+ExactExplainer explainer:  
+32%|ΓûêΓûêΓûêΓûÄ      | 
+650/2000 [01:21<02:21,  
+9.57it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+651/2000 [01:22<02:19,  
+9.65it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+652/2000 [01:22<02:21,  
+9.54it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+653/2000 [01:22<02:19,  
+9.63it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+655/2000 [01:22<02:14,  
+9.98it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+657/2000 [01:22<02:14, 
+10.01it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+658/2000 [01:22<02:15,  
+9.91it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+659/2000 [01:22<02:17,  
+9.74it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+660/2000 [01:22<02:17,  
+9.73it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+661/2000 [01:23<02:18,  
+9.69it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+663/2000 [01:23<02:28,  
+8.99it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+664/2000 [01:23<02:26,  
+9.13it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+666/2000 [01:23<02:20,  
+9.47it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+667/2000 [01:23<02:21,  
+9.42it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+668/2000 [01:23<02:19,  
+9.55it/s]
+ExactExplainer explainer:  
+33%|ΓûêΓûêΓûêΓûÄ      | 
+669/2000 [01:23<02:19,  
+9.54it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûÄ      | 
+671/2000 [01:24<02:17,  
+9.65it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûÄ      | 
+672/2000 [01:24<02:17,  
+9.64it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûÄ      | 
+673/2000 [01:24<02:18,  
+9.56it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+675/2000 [01:24<02:16,  
+9.68it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+676/2000 [01:24<02:18,  
+9.55it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+677/2000 [01:24<02:21,  
+9.33it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+678/2000 [01:24<02:20,  
+9.44it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+680/2000 [01:25<02:16,  
+9.67it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+681/2000 [01:25<02:17,  
+9.61it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+683/2000 [01:25<02:15,  
+9.73it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+684/2000 [01:25<02:15,  
+9.74it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+686/2000 [01:25<02:13,  
+9.82it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+688/2000 [01:25<02:14,  
+9.79it/s]
+ExactExplainer explainer:  
+34%|ΓûêΓûêΓûêΓûì      | 
+690/2000 [01:26<02:12,  
+9.91it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûì      | 
+692/2000 [01:26<02:10,  
+9.99it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûì      | 
+693/2000 [01:26<02:10,  
+9.98it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûì      | 
+695/2000 [01:26<02:10,  
+9.99it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûì      | 
+697/2000 [01:26<02:10,  
+9.97it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûì      | 
+698/2000 [01:26<02:11,  
+9.89it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûî      | 
+700/2000 [01:27<02:10,  
+9.94it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûî      | 
+702/2000 [01:27<02:09,  
+9.99it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûî      | 
+703/2000 [01:27<02:11,  
+9.84it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûî      | 
+704/2000 [01:27<02:12,  
+9.75it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûî      | 
+705/2000 [01:27<02:14,  
+9.66it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûî      | 
+706/2000 [01:27<02:13,  
+9.70it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûî      | 
+708/2000 [01:27<02:11,  
+9.81it/s]
+ExactExplainer explainer:  
+35%|ΓûêΓûêΓûêΓûî      | 
+709/2000 [01:28<02:13,  
+9.66it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûî      | 
+711/2000 [01:28<02:13,  
+9.68it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûî      | 
+713/2000 [01:28<02:08, 
+10.03it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûî      | 
+714/2000 [01:28<02:11,  
+9.80it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûî      | 
+715/2000 [01:28<02:13,  
+9.62it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûî      | 
+717/2000 [01:28<02:11,  
+9.77it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûî      | 
+719/2000 [01:29<02:10,  
+9.83it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûî      | 
+721/2000 [01:29<02:10,  
+9.81it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûî      | 
+722/2000 [01:29<02:15,  
+9.44it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûî      | 
+724/2000 [01:29<02:12,  
+9.66it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûï      | 
+726/2000 [01:29<02:10,  
+9.77it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûï      | 
+728/2000 [01:29<02:10,  
+9.72it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûï      | 
+729/2000 [01:30<02:11,  
+9.68it/s]
+ExactExplainer explainer:  
+36%|ΓûêΓûêΓûêΓûï      | 
+730/2000 [01:30<02:12,  
+9.62it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+732/2000 [01:30<02:10,  
+9.69it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+734/2000 [01:30<02:06,  
+9.98it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+735/2000 [01:30<02:06,  
+9.97it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+736/2000 [01:30<02:09,  
+9.76it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+737/2000 [01:30<02:08,  
+9.81it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+738/2000 [01:30<02:08,  
+9.85it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+739/2000 [01:31<02:11,  
+9.56it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+741/2000 [01:31<02:09,  
+9.73it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+742/2000 [01:31<02:08,  
+9.77it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+743/2000 [01:31<02:11,  
+9.57it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+745/2000 [01:31<02:08,  
+9.74it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+746/2000 [01:31<02:07,  
+9.80it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+747/2000 [01:31<02:08,  
+9.73it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+748/2000 [01:32<02:08,  
+9.74it/s]
+ExactExplainer explainer:  
+37%|ΓûêΓûêΓûêΓûï      | 
+749/2000 [01:32<02:09,  
+9.66it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+751/2000 [01:32<02:07,  
+9.81it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+752/2000 [01:32<02:08,  
+9.69it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+754/2000 [01:32<02:06,  
+9.81it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+756/2000 [01:32<02:04, 
+10.01it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+758/2000 [01:33<02:05,  
+9.89it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+759/2000 [01:33<02:06,  
+9.82it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+760/2000 [01:33<02:07,  
+9.76it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+762/2000 [01:33<02:05,  
+9.85it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+763/2000 [01:33<02:07,  
+9.68it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+765/2000 [01:33<02:06,  
+9.78it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+767/2000 [01:33<02:04,  
+9.90it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+769/2000 [01:34<02:03,  
+9.94it/s]
+ExactExplainer explainer:  
+38%|ΓûêΓûêΓûêΓûè      | 
+770/2000 [01:34<02:04,  
+9.87it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûè      | 
+772/2000 [01:34<02:05,  
+9.77it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûè      | 
+774/2000 [01:34<02:03,  
+9.90it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+775/2000 [01:34<02:04,  
+9.87it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+776/2000 [01:34<02:03,  
+9.88it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+777/2000 [01:34<02:04,  
+9.85it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+779/2000 [01:35<02:02,  
+9.93it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+780/2000 [01:35<02:04,  
+9.78it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+782/2000 [01:35<02:02,  
+9.93it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+784/2000 [01:35<02:03,  
+9.86it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+786/2000 [01:35<02:02,  
+9.87it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+787/2000 [01:35<02:05,  
+9.66it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+788/2000 [01:36<02:05,  
+9.67it/s]
+ExactExplainer explainer:  
+39%|ΓûêΓûêΓûêΓûë      | 
+789/2000 [01:36<02:06,  
+9.59it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûë      | 
+790/2000 [01:36<02:05,  
+9.63it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûë      | 
+792/2000 [01:36<02:03,  
+9.78it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûë      | 
+793/2000 [01:36<02:03,  
+9.75it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûë      | 
+794/2000 [01:36<02:03,  
+9.74it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûë      | 
+795/2000 [01:36<02:07,  
+9.44it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûë      | 
+797/2000 [01:37<02:03,  
+9.73it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûë      | 
+798/2000 [01:37<02:03,  
+9.76it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûë      | 
+799/2000 [01:37<02:02,  
+9.80it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûê      | 
+800/2000 [01:37<02:04,  
+9.61it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûê      | 
+802/2000 [01:37<02:04,  
+9.61it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûê      | 
+803/2000 [01:37<02:04,  
+9.63it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûê      | 
+804/2000 [01:37<02:04,  
+9.60it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûê      | 
+805/2000 [01:37<02:03,  
+9.70it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûê      | 
+806/2000 [01:37<02:02,  
+9.76it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûê      | 
+807/2000 [01:38<02:02,  
+9.78it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûê      | 
+809/2000 [01:38<02:00,  
+9.90it/s]
+ExactExplainer explainer:  
+40%|ΓûêΓûêΓûêΓûê      | 
+810/2000 [01:38<02:01,  
+9.82it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûê      | 
+812/2000 [01:38<02:00,  
+9.89it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûê      | 
+814/2000 [01:38<01:58,  
+9.97it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûê      | 
+815/2000 [01:38<01:59,  
+9.91it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûê      | 
+817/2000 [01:39<01:59,  
+9.90it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûê      | 
+818/2000 [01:39<02:00,  
+9.84it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûê      | 
+819/2000 [01:39<01:59,  
+9.85it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûê      | 
+821/2000 [01:39<01:57, 
+10.01it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûê      | 
+822/2000 [01:39<01:58,  
+9.91it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûê      | 
+823/2000 [01:39<01:58,  
+9.93it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+825/2000 [01:39<01:57,  
+9.96it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+826/2000 [01:39<01:58,  
+9.88it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+828/2000 [01:40<01:57, 
+10.01it/s]
+ExactExplainer explainer:  
+41%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+829/2000 [01:40<01:59,  
+9.81it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+830/2000 [01:40<01:59,  
+9.76it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+832/2000 [01:40<01:56, 
+10.00it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+833/2000 [01:40<01:57,  
+9.96it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+835/2000 [01:40<01:57,  
+9.88it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+837/2000 [01:41<01:55, 
+10.07it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+839/2000 [01:41<01:56,  
+9.96it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+841/2000 [01:41<01:58,  
+9.75it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+842/2000 [01:41<01:58,  
+9.78it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+844/2000 [01:41<02:01,  
+9.53it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+845/2000 [01:41<02:04,  
+9.29it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+846/2000 [01:42<02:03,  
+9.33it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+847/2000 [01:42<02:01,  
+9.48it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÅ     | 
+849/2000 [01:42<02:00,  
+9.55it/s]
+ExactExplainer explainer:  
+42%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+850/2000 [01:42<02:00,  
+9.53it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+852/2000 [01:42<01:57,  
+9.75it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+854/2000 [01:42<02:00,  
+9.53it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+856/2000 [01:43<01:58,  
+9.65it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+858/2000 [01:43<01:56,  
+9.76it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+859/2000 [01:43<01:57,  
+9.74it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+861/2000 [01:43<01:55,  
+9.84it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+862/2000 [01:43<01:56,  
+9.78it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+864/2000 [01:43<01:56,  
+9.76it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+865/2000 [01:43<01:55,  
+9.81it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+867/2000 [01:44<01:55,  
+9.83it/s]
+ExactExplainer explainer:  
+43%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+868/2000 [01:44<01:54,  
+9.86it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+870/2000 [01:44<01:53,  
+9.91it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+871/2000 [01:44<01:53,  
+9.93it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûÄ     | 
+873/2000 [01:44<01:52, 
+10.02it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûì     | 
+875/2000 [01:44<01:53,  
+9.94it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûì     | 
+877/2000 [01:45<01:51, 
+10.03it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûì     | 
+879/2000 [01:45<01:51, 
+10.02it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûì     | 
+881/2000 [01:45<01:51, 
+10.07it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûì     | 
+883/2000 [01:45<01:50, 
+10.07it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûì     | 
+885/2000 [01:45<01:51, 
+10.01it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûì     | 
+887/2000 [01:46<01:51,  
+9.97it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûì     | 
+889/2000 [01:46<01:51,  
+9.98it/s]
+ExactExplainer explainer:  
+44%|ΓûêΓûêΓûêΓûêΓûì     | 
+890/2000 [01:46<01:51,  
+9.98it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûì     | 
+891/2000 [01:46<01:52,  
+9.84it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûì     | 
+892/2000 [01:46<01:53,  
+9.79it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûì     | 
+894/2000 [01:46<01:51,  
+9.95it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûì     | 
+896/2000 [01:47<01:51,  
+9.90it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûì     | 
+898/2000 [01:47<01:48, 
+10.12it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûî     | 
+900/2000 [01:47<01:52,  
+9.81it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûî     | 
+901/2000 [01:47<01:53,  
+9.70it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûî     | 
+902/2000 [01:47<01:53,  
+9.70it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûî     | 
+903/2000 [01:47<01:53,  
+9.65it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûî     | 
+905/2000 [01:47<01:49,  
+9.96it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûî     | 
+906/2000 [01:48<01:52,  
+9.69it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûî     | 
+908/2000 [01:48<01:49,  
+9.96it/s]
+ExactExplainer explainer:  
+45%|ΓûêΓûêΓûêΓûêΓûî     | 
+909/2000 [01:48<01:51,  
+9.82it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+910/2000 [01:48<01:50,  
+9.85it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+912/2000 [01:48<01:49,  
+9.91it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+913/2000 [01:48<01:49,  
+9.89it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+915/2000 [01:49<01:50,  
+9.82it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+916/2000 [01:49<01:51,  
+9.72it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+917/2000 [01:49<01:50,  
+9.77it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+919/2000 [01:49<01:49,  
+9.85it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+920/2000 [01:49<01:50,  
+9.79it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+922/2000 [01:49<01:48,  
+9.96it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûî     | 
+924/2000 [01:49<01:49,  
+9.83it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûï     | 
+925/2000 [01:50<01:50,  
+9.75it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûï     | 
+926/2000 [01:50<01:50,  
+9.71it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûï     | 
+928/2000 [01:50<01:49,  
+9.82it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûï     | 
+929/2000 [01:50<01:49,  
+9.77it/s]
+ExactExplainer explainer:  
+46%|ΓûêΓûêΓûêΓûêΓûï     | 
+930/2000 [01:50<01:49,  
+9.74it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+931/2000 [01:50<01:50,  
+9.71it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+932/2000 [01:50<01:49,  
+9.78it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+933/2000 [01:50<01:49,  
+9.72it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+934/2000 [01:50<01:48,  
+9.79it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+935/2000 [01:51<01:49,  
+9.69it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+937/2000 [01:51<01:47,  
+9.88it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+938/2000 [01:51<01:49,  
+9.68it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+940/2000 [01:51<01:46,  
+9.92it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+942/2000 [01:51<01:46,  
+9.94it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+944/2000 [01:51<01:46,  
+9.88it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+946/2000 [01:52<01:46,  
+9.92it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+947/2000 [01:52<01:48,  
+9.73it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+948/2000 [01:52<01:49,  
+9.61it/s]
+ExactExplainer explainer:  
+47%|ΓûêΓûêΓûêΓûêΓûï     | 
+949/2000 [01:52<01:49,  
+9.61it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+950/2000 [01:52<01:48,  
+9.68it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+952/2000 [01:52<01:44, 
+10.00it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+954/2000 [01:52<01:43, 
+10.09it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+955/2000 [01:53<01:43, 
+10.07it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+956/2000 [01:53<01:45,  
+9.93it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+958/2000 [01:53<01:44,  
+9.97it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+960/2000 [01:53<01:43, 
+10.05it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+961/2000 [01:53<01:44,  
+9.95it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+963/2000 [01:53<01:44,  
+9.88it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+964/2000 [01:53<01:45,  
+9.83it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+966/2000 [01:54<01:42, 
+10.04it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+967/2000 [01:54<01:44,  
+9.85it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+968/2000 [01:54<01:47,  
+9.63it/s]
+ExactExplainer explainer:  
+48%|ΓûêΓûêΓûêΓûêΓûè     | 
+970/2000 [01:54<01:47,  
+9.54it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûè     | 
+971/2000 [01:54<01:47,  
+9.56it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûè     | 
+972/2000 [01:54<01:47,  
+9.59it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûè     | 
+974/2000 [01:55<01:45,  
+9.75it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûë     | 
+975/2000 [01:55<01:45,  
+9.75it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûë     | 
+976/2000 [01:55<01:44,  
+9.79it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûë     | 
+978/2000 [01:55<01:41, 
+10.03it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûë     | 
+980/2000 [01:55<01:41, 
+10.08it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûë     | 
+982/2000 [01:55<01:42,  
+9.97it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûë     | 
+984/2000 [01:56<01:40, 
+10.14it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûë     | 
+986/2000 [01:56<01:41,  
+9.95it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûë     | 
+987/2000 [01:56<01:43,  
+9.83it/s]
+ExactExplainer explainer:  
+49%|ΓûêΓûêΓûêΓûêΓûë     | 
+989/2000 [01:56<01:42,  
+9.90it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûë     | 
+990/2000 [01:56<01:43,  
+9.75it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûë     | 
+992/2000 [01:56<01:42,  
+9.82it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûë     | 
+994/2000 [01:57<01:41,  
+9.89it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûë     | 
+995/2000 [01:57<01:42,  
+9.82it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûë     | 
+996/2000 [01:57<01:41,  
+9.85it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûë     | 
+997/2000 [01:57<01:42,  
+9.81it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûë     | 
+998/2000 [01:57<01:42,  
+9.73it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûë     | 
+999/2000 [01:57<01:43,  
+9.72it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûê     | 
+1000/2000 [01:57<01:42,  
+9.76it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûê     | 
+1002/2000 [01:57<01:40,  
+9.98it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûê     | 
+1004/2000 [01:58<01:39,  
+9.98it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûê     | 
+1005/2000 [01:58<01:40,  
+9.90it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûê     | 
+1007/2000 [01:58<01:39,  
+9.94it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûê     | 
+1009/2000 [01:58<01:39,  
+9.96it/s]
+ExactExplainer explainer:  
+50%|ΓûêΓûêΓûêΓûêΓûê     | 
+1010/2000 [01:58<01:39,  
+9.96it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1012/2000 [01:58<01:37, 
+10.12it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1014/2000 [01:59<01:41,  
+9.73it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1015/2000 [01:59<01:41,  
+9.74it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1016/2000 [01:59<01:40,  
+9.79it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1017/2000 [01:59<01:40,  
+9.79it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1018/2000 [01:59<01:41,  
+9.70it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1019/2000 [01:59<01:42,  
+9.58it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1021/2000 [01:59<01:39,  
+9.80it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1022/2000 [01:59<01:41,  
+9.60it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûê     | 
+1024/2000 [02:00<01:40,  
+9.76it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1025/2000 [02:00<01:39,  
+9.77it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1026/2000 [02:00<01:40,  
+9.66it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1027/2000 [02:00<01:39,  
+9.74it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1028/2000 [02:00<01:42,  
+9.48it/s]
+ExactExplainer explainer:  
+51%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1029/2000 [02:00<01:41,  
+9.56it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1031/2000 [02:00<01:37,  
+9.93it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1033/2000 [02:00<01:35, 
+10.09it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1034/2000 [02:01<01:40,  
+9.57it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1036/2000 [02:01<01:38,  
+9.75it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1038/2000 [02:01<01:37,  
+9.91it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1039/2000 [02:01<01:37,  
+9.83it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1040/2000 [02:01<01:37,  
+9.86it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1042/2000 [02:01<01:37,  
+9.81it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1044/2000 [02:02<01:36,  
+9.95it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1045/2000 [02:02<01:37,  
+9.84it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1046/2000 [02:02<01:37,  
+9.74it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1047/2000 [02:02<01:38,  
+9.69it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÅ    
+| 1049/2000 [02:02<01:36,  
+9.87it/s]
+ExactExplainer explainer:  
+52%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1050/2000 [02:02<01:36,  
+9.88it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1051/2000 [02:02<01:36,  
+9.79it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1052/2000 [02:02<01:36,  
+9.83it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1053/2000 [02:03<01:36,  
+9.78it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1054/2000 [02:03<01:36,  
+9.82it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1055/2000 [02:03<01:37,  
+9.74it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1056/2000 [02:03<01:36,  
+9.78it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1057/2000 [02:03<01:37,  
+9.72it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1058/2000 [02:03<01:36,  
+9.74it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1059/2000 [02:03<01:35,  
+9.81it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1060/2000 [02:03<01:35,  
+9.86it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1061/2000 [02:03<01:34,  
+9.90it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1062/2000 [02:03<01:37,  
+9.66it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1064/2000 [02:04<01:34,  
+9.94it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1065/2000 [02:04<01:34,  
+9.87it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1067/2000 [02:04<01:35,  
+9.78it/s]
+ExactExplainer explainer:  
+53%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1068/2000 [02:04<01:35,  
+9.80it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1070/2000 [02:04<01:34,  
+9.87it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1072/2000 [02:04<01:33,  
+9.92it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1073/2000 [02:05<01:34,  
+9.77it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûÄ    
+| 1074/2000 [02:05<01:34,  
+9.82it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1076/2000 [02:05<01:32, 
+10.02it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1077/2000 [02:05<01:32, 
+10.00it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1079/2000 [02:05<01:33,  
+9.84it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1081/2000 [02:05<01:32,  
+9.95it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1082/2000 [02:05<01:34,  
+9.76it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1084/2000 [02:06<01:33,  
+9.85it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1085/2000 [02:06<01:34,  
+9.73it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1086/2000 [02:06<01:34,  
+9.70it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1088/2000 [02:06<01:31,  
+9.99it/s]
+ExactExplainer explainer:  
+54%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1089/2000 [02:06<01:32,  
+9.87it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1091/2000 [02:06<01:31,  
+9.91it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1092/2000 [02:07<01:32,  
+9.78it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1094/2000 [02:07<01:33,  
+9.68it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1095/2000 [02:07<01:34,  
+9.62it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1096/2000 [02:07<01:34,  
+9.53it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1097/2000 [02:07<01:33,  
+9.61it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûì    
+| 1099/2000 [02:07<01:34,  
+9.49it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1101/2000 [02:07<01:32,  
+9.70it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1103/2000 [02:08<01:31,  
+9.84it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1104/2000 [02:08<01:31,  
+9.84it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1105/2000 [02:08<01:31,  
+9.75it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1107/2000 [02:08<01:30,  
+9.89it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1108/2000 [02:08<01:30,  
+9.91it/s]
+ExactExplainer explainer:  
+55%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1109/2000 [02:08<01:31,  
+9.75it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1110/2000 [02:08<01:31,  
+9.71it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1111/2000 [02:08<01:31,  
+9.75it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1112/2000 [02:09<01:32,  
+9.63it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1114/2000 [02:09<01:31,  
+9.72it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1116/2000 [02:09<01:30,  
+9.82it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1117/2000 [02:09<01:29,  
+9.82it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1119/2000 [02:09<01:29,  
+9.89it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1121/2000 [02:09<01:28,  
+9.96it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1123/2000 [02:10<01:29,  
+9.84it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûî    
+| 1124/2000 [02:10<01:30,  
+9.72it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1125/2000 [02:10<01:30,  
+9.69it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1126/2000 [02:10<01:29,  
+9.76it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1127/2000 [02:10<01:29,  
+9.75it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1128/2000 [02:10<01:29,  
+9.71it/s]
+ExactExplainer explainer:  
+56%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1130/2000 [02:10<01:27,  
+9.93it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1131/2000 [02:11<01:27,  
+9.89it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1133/2000 [02:11<01:26, 
+10.04it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1134/2000 [02:11<01:27,  
+9.92it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1135/2000 [02:11<01:27,  
+9.86it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1136/2000 [02:11<01:27,  
+9.84it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1137/2000 [02:11<01:28,  
+9.71it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1139/2000 [02:11<01:28,  
+9.69it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1140/2000 [02:11<01:29,  
+9.63it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1141/2000 [02:12<01:32,  
+9.27it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1143/2000 [02:12<01:29,  
+9.58it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1144/2000 [02:12<01:29,  
+9.60it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1145/2000 [02:12<01:35,  
+8.97it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1146/2000 [02:12<01:33,  
+9.18it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûï    
+| 1148/2000 [02:12<01:28,  
+9.68it/s]
+ExactExplainer explainer:  
+57%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1150/2000 [02:12<01:26,  
+9.80it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1151/2000 [02:13<01:27,  
+9.67it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1153/2000 [02:13<01:26,  
+9.79it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1154/2000 [02:13<01:26,  
+9.80it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1156/2000 [02:13<01:25,  
+9.84it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1157/2000 [02:13<01:26,  
+9.78it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1159/2000 [02:13<01:25,  
+9.82it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1160/2000 [02:14<01:25,  
+9.79it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1161/2000 [02:14<01:26,  
+9.73it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1163/2000 [02:14<01:24,  
+9.87it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1164/2000 [02:14<01:26,  
+9.71it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1165/2000 [02:14<01:26,  
+9.66it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1166/2000 [02:14<01:26,  
+9.63it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1168/2000 [02:14<01:25,  
+9.78it/s]
+ExactExplainer explainer:  
+58%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1170/2000 [02:15<01:24,  
+9.82it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1172/2000 [02:15<01:21, 
+10.10it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûè    
+| 1174/2000 [02:15<01:23,  
+9.90it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1176/2000 [02:15<01:22, 
+10.00it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1178/2000 [02:15<01:21, 
+10.10it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1180/2000 [02:16<01:23,  
+9.88it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1181/2000 [02:16<01:23,  
+9.82it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1183/2000 [02:16<01:22,  
+9.94it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1185/2000 [02:16<01:21, 
+10.01it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1187/2000 [02:16<01:22,  
+9.88it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1188/2000 [02:16<01:22,  
+9.79it/s]
+ExactExplainer explainer:  
+59%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1189/2000 [02:16<01:23,  
+9.71it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1190/2000 [02:17<01:23,  
+9.67it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1191/2000 [02:17<01:23,  
+9.67it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1192/2000 [02:17<01:23,  
+9.67it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1193/2000 [02:17<01:24,  
+9.56it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1194/2000 [02:17<01:24,  
+9.49it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1196/2000 [02:17<01:21,  
+9.86it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1197/2000 [02:17<01:21,  
+9.88it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûë    
+| 1199/2000 [02:18<01:34,  
+8.45it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1200/2000 [02:18<01:41,  
+7.90it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1202/2000 [02:18<01:31,  
+8.69it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1204/2000 [02:18<01:28,  
+9.02it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1206/2000 [02:18<01:26,  
+9.22it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1207/2000 [02:18<01:24,  
+9.36it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1208/2000 [02:19<01:23,  
+9.43it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1209/2000 [02:19<01:23,  
+9.50it/s]
+ExactExplainer explainer:  
+60%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1210/2000 [02:19<01:22,  
+9.53it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1211/2000 [02:19<01:23,  
+9.50it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1212/2000 [02:19<01:23,  
+9.44it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1213/2000 [02:19<01:22,  
+9.57it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1214/2000 [02:19<01:21,  
+9.69it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1216/2000 [02:19<01:18, 
+10.01it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1217/2000 [02:19<01:18, 
+10.00it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1218/2000 [02:20<01:19,  
+9.81it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1219/2000 [02:20<01:20,  
+9.65it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1221/2000 [02:20<01:20,  
+9.68it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1223/2000 [02:20<01:18,  
+9.91it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûê    
+| 1224/2000 [02:20<01:18,  
+9.93it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1225/2000 [02:20<01:17, 
+ 9.94it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1226/2000 [02:20<01:19, 
+ 9.78it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1228/2000 [02:21<01:17, 
+ 9.90it/s]
+ExactExplainer explainer:  
+61%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1229/2000 [02:21<01:18, 
+ 9.82it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1230/2000 [02:21<01:18, 
+ 9.85it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1232/2000 [02:21<01:17, 
+ 9.97it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1234/2000 [02:21<01:16, 
+ 9.99it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1235/2000 [02:21<01:18, 
+ 9.80it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1236/2000 [02:21<01:17, 
+ 9.81it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1237/2000 [02:21<01:18, 
+ 9.71it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1238/2000 [02:22<01:18, 
+ 9.71it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1239/2000 [02:22<01:18, 
+ 9.64it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1241/2000 [02:22<01:16, 
+ 9.87it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1242/2000 [02:22<01:17, 
+ 9.81it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1244/2000 [02:22<01:15, 
+10.00it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1245/2000 [02:22<01:15, 
+10.00it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1247/2000 [02:22<01:14, 
+10.13it/s]
+ExactExplainer explainer:  
+62%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÅ  
+ | 1249/2000 [02:23<01:14, 
+10.10it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1251/2000 [02:23<01:18, 
+ 9.52it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1252/2000 [02:23<01:17, 
+ 9.61it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1253/2000 [02:23<01:17, 
+ 9.67it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1254/2000 [02:23<01:18, 
+ 9.50it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1255/2000 [02:23<01:18, 
+ 9.55it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1256/2000 [02:23<01:17, 
+ 9.62it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1257/2000 [02:24<01:17, 
+ 9.55it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1258/2000 [02:24<01:17, 
+ 9.52it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1260/2000 [02:24<01:15, 
+ 9.74it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1261/2000 [02:24<01:17, 
+ 9.53it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1262/2000 [02:24<01:17, 
+ 9.53it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1263/2000 [02:24<01:17, 
+ 9.50it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1264/2000 [02:24<01:16, 
+ 9.62it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1265/2000 [02:24<01:21, 
+ 9.00it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1266/2000 [02:24<01:20, 
+ 9.12it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1268/2000 [02:25<01:16, 
+ 9.51it/s]
+ExactExplainer explainer:  
+63%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1269/2000 [02:25<01:16, 
+ 9.58it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1270/2000 [02:25<01:16, 
+ 9.54it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1271/2000 [02:25<01:16, 
+ 9.56it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûÄ  
+ | 1273/2000 [02:25<01:13, 
+ 9.83it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1275/2000 [02:25<01:13, 
+ 9.82it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1277/2000 [02:26<01:11, 
+10.06it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1278/2000 [02:26<01:12, 
+10.03it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1280/2000 [02:26<01:10, 
+10.18it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1282/2000 [02:26<01:13, 
+ 9.74it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1283/2000 [02:26<01:14, 
+ 9.68it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1284/2000 [02:26<01:13, 
+ 9.69it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1285/2000 [02:26<01:13, 
+ 9.76it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1286/2000 [02:27<01:15, 
+ 9.52it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1287/2000 [02:27<01:16, 
+ 9.37it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1288/2000 [02:27<01:14, 
+ 9.53it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1289/2000 [02:27<01:13, 
+ 9.66it/s]
+ExactExplainer explainer:  
+64%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1290/2000 [02:27<01:14, 
+ 9.54it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1291/2000 [02:27<01:14, 
+ 9.51it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1293/2000 [02:27<01:13, 
+ 9.65it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1295/2000 [02:27<01:13, 
+ 9.64it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1296/2000 [02:28<01:12, 
+ 9.65it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1297/2000 [02:28<01:12, 
+ 9.67it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûì  
+ | 1299/2000 [02:28<01:10, 
+ 9.92it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1300/2000 [02:28<01:11, 
+ 9.85it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1302/2000 [02:28<01:10, 
+ 9.88it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1304/2000 [02:28<01:10, 
+ 9.86it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1306/2000 [02:29<01:10, 
+ 9.88it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1307/2000 [02:29<01:10, 
+ 9.80it/s]
+ExactExplainer explainer:  
+65%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1309/2000 [02:29<01:10, 
+ 9.79it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1310/2000 [02:29<01:10, 
+ 9.77it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1312/2000 [02:29<01:10, 
+ 9.82it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1313/2000 [02:29<01:10, 
+ 9.68it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1314/2000 [02:29<01:10, 
+ 9.70it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1316/2000 [02:30<01:09, 
+ 9.86it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1317/2000 [02:30<01:09, 
+ 9.89it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1318/2000 [02:30<01:08, 
+ 9.89it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1320/2000 [02:30<01:08, 
+ 9.87it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1321/2000 [02:30<01:08, 
+ 9.86it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1322/2000 [02:30<01:08, 
+ 9.86it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûî  
+ | 1324/2000 [02:30<01:08, 
+ 9.90it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1326/2000 [02:31<01:07, 
+ 9.98it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1327/2000 [02:31<01:07, 
+ 9.92it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1329/2000 [02:31<01:07, 
+ 9.87it/s]
+ExactExplainer explainer:  
+66%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1330/2000 [02:31<01:08, 
+ 9.81it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1331/2000 [02:31<01:08, 
+ 9.81it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1332/2000 [02:31<01:08, 
+ 9.76it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1333/2000 [02:31<01:08, 
+ 9.72it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1334/2000 [02:31<01:08, 
+ 9.75it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1335/2000 [02:32<01:08, 
+ 9.77it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1336/2000 [02:32<01:08, 
+ 9.67it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1337/2000 [02:32<01:08, 
+ 9.65it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1338/2000 [02:32<01:08, 
+ 9.63it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1339/2000 [02:32<01:09, 
+ 9.54it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1341/2000 [02:32<01:07, 
+ 9.80it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1343/2000 [02:32<01:07, 
+ 9.76it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1344/2000 [02:32<01:08, 
+ 9.64it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1346/2000 [02:33<01:06, 
+ 9.80it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1347/2000 [02:33<01:07, 
+ 9.63it/s]
+ExactExplainer explainer:  
+67%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûï  
+ | 1349/2000 [02:33<01:08, 
+ 9.48it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1350/2000 [02:33<01:08, 
+ 9.49it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1351/2000 [02:33<01:08, 
+ 9.53it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1352/2000 [02:33<01:07, 
+ 9.59it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1354/2000 [02:33<01:06, 
+ 9.77it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1356/2000 [02:34<01:06, 
+ 9.70it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1357/2000 [02:34<01:06, 
+ 9.63it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1358/2000 [02:34<01:07, 
+ 9.53it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1359/2000 [02:34<01:07, 
+ 9.55it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1360/2000 [02:34<01:07, 
+ 9.52it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1362/2000 [02:34<01:06, 
+ 9.65it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1363/2000 [02:34<01:06, 
+ 9.62it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1364/2000 [02:35<01:06, 
+ 9.61it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1365/2000 [02:35<01:05, 
+ 9.63it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1366/2000 [02:35<01:07, 
+ 9.38it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1367/2000 [02:35<01:06, 
+ 9.51it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1368/2000 [02:35<01:05, 
+ 9.64it/s]
+ExactExplainer explainer:  
+68%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1370/2000 [02:35<01:04, 
+ 9.77it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1372/2000 [02:35<01:03, 
+ 9.86it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûè  
+ | 1374/2000 [02:36<01:03, 
+ 9.91it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1376/2000 [02:36<01:03, 
+ 9.82it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1378/2000 [02:36<01:02, 
+10.00it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1379/2000 [02:36<01:02, 
+10.00it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1380/2000 [02:36<01:02, 
+ 9.99it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1382/2000 [02:36<01:01, 
+ 9.99it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1383/2000 [02:36<01:02, 
+ 9.86it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1385/2000 [02:37<01:00, 
+10.09it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1387/2000 [02:37<01:02, 
+ 9.80it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1388/2000 [02:37<01:02, 
+ 9.83it/s]
+ExactExplainer explainer:  
+69%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1389/2000 [02:37<01:02, 
+ 9.72it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1391/2000 [02:37<01:02, 
+ 9.80it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1392/2000 [02:37<01:01, 
+ 9.84it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1394/2000 [02:38<01:01, 
+ 9.81it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1395/2000 [02:38<01:02, 
+ 9.70it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1397/2000 [02:38<01:01, 
+ 9.82it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1398/2000 [02:38<01:02, 
+ 9.70it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûë  
+ | 1399/2000 [02:38<01:01, 
+ 9.74it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1401/2000 [02:38<01:00, 
+ 9.84it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1403/2000 [02:39<01:00, 
+ 9.92it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1405/2000 [02:39<00:59, 
+ 9.95it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1406/2000 [02:39<01:00, 
+ 9.89it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1408/2000 [02:39<00:59, 
+ 9.89it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1409/2000 [02:39<00:59, 
+ 9.91it/s]
+ExactExplainer explainer:  
+70%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1410/2000 [02:39<00:59, 
+ 9.91it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1412/2000 [02:39<00:58, 
+ 9.97it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1413/2000 [02:40<00:58, 
+ 9.96it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1414/2000 [02:40<01:00, 
+ 9.74it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1415/2000 [02:40<00:59, 
+ 9.78it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1416/2000 [02:40<01:00, 
+ 9.69it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1417/2000 [02:40<01:00, 
+ 9.68it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1418/2000 [02:40<00:59, 
+ 9.71it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1419/2000 [02:40<00:59, 
+ 9.72it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1420/2000 [02:40<00:59, 
+ 9.70it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1422/2000 [02:40<00:58, 
+ 9.83it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûê  
+ | 1423/2000 [02:41<00:58, 
+ 9.79it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1425/2000 
+[02:41<00:58,  9.80it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1427/2000 
+[02:41<00:57,  9.92it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1428/2000 
+[02:41<00:57,  9.89it/s]
+ExactExplainer explainer:  
+71%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1429/2000 
+[02:41<00:58,  9.76it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1430/2000 
+[02:41<00:58,  9.78it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1431/2000 
+[02:41<00:58,  9.78it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1433/2000 
+[02:42<00:56,  9.99it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1434/2000 
+[02:42<00:57,  9.87it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1435/2000 
+[02:42<00:57,  9.83it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1436/2000 
+[02:42<00:57,  9.77it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1437/2000 
+[02:42<00:59,  9.50it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1438/2000 
+[02:42<00:58,  9.59it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1440/2000 
+[02:42<00:56,  9.95it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1441/2000 
+[02:42<00:56,  9.96it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1443/2000 
+[02:43<00:56,  9.87it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1445/2000 
+[02:43<00:55, 10.02it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1446/2000 
+[02:43<00:55,  9.95it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Å  | 1448/2000 
+[02:43<00:54, 10.09it/s]
+ExactExplainer explainer:  
+72%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1450/2000 
+[02:43<00:55,  9.89it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1452/2000 
+[02:43<00:55,  9.80it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1454/2000 
+[02:44<00:55,  9.83it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1455/2000 
+[02:44<00:55,  9.74it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1457/2000 
+[02:44<00:55,  9.78it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1458/2000 
+[02:44<00:55,  9.72it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1460/2000 
+[02:44<00:54,  9.84it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1462/2000 
+[02:44<00:54,  9.96it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1463/2000 
+[02:45<00:55,  9.69it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1464/2000 
+[02:45<00:56,  9.53it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1466/2000 
+[02:45<00:54,  9.82it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1467/2000 
+[02:45<00:54,  9.77it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1468/2000 
+[02:45<00:54,  9.82it/s]
+ExactExplainer explainer:  
+73%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1469/2000 
+[02:45<00:54,  9.78it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1470/2000 
+[02:45<00:54,  9.71it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1472/2000 
+[02:46<00:53,  9.90it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+Ä  | 1474/2000 
+[02:46<00:53,  9.78it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1475/2000 
+[02:46<00:54,  9.66it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1476/2000 
+[02:46<00:53,  9.74it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1477/2000 
+[02:46<00:56,  9.19it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1478/2000 
+[02:46<00:55,  9.38it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1479/2000 
+[02:46<00:54,  9.49it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1481/2000 
+[02:46<00:53,  9.71it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1482/2000 
+[02:47<00:54,  9.54it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1484/2000 
+[02:47<00:53,  9.69it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1486/2000 
+[02:47<00:52,  9.78it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1487/2000 
+[02:47<00:52,  9.78it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1488/2000 
+[02:47<00:52,  9.82it/s]
+ExactExplainer explainer:  
+74%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1490/2000 
+[02:47<00:51,  9.84it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1492/2000 
+[02:48<00:50,  9.98it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1493/2000 
+[02:48<00:52,  9.64it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1495/2000 
+[02:48<00:51,  9.76it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1496/2000 
+[02:48<00:51,  9.71it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1498/2000 
+[02:48<00:52,  9.63it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ì  | 1499/2000 
+[02:48<00:51,  9.70it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1500/2000 
+[02:48<00:51,  9.76it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1501/2000 
+[02:49<00:50,  9.80it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1502/2000 
+[02:49<00:51,  9.74it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1503/2000 
+[02:49<00:51,  9.59it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1505/2000 
+[02:49<00:50,  9.85it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1506/2000 
+[02:49<00:50,  9.79it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1507/2000 
+[02:49<00:50,  9.82it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1508/2000 
+[02:49<00:50,  9.69it/s]
+ExactExplainer explainer:  
+75%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1509/2000 
+[02:49<00:50,  9.71it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1511/2000 
+[02:50<00:50,  9.74it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1513/2000 
+[02:50<00:50,  9.74it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1515/2000 
+[02:50<00:49,  9.74it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1516/2000 
+[02:50<00:49,  9.78it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1517/2000 
+[02:50<00:49,  9.73it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1519/2000 
+[02:50<00:48,  9.93it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1521/2000 
+[02:51<00:48,  9.86it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1523/2000 
+[02:51<00:48,  9.90it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+î  | 1524/2000 
+[02:51<00:49,  9.61it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1525/2000 
+[02:51<00:49,  9.60it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1527/2000 
+[02:51<00:49,  9.63it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1528/2000 
+[02:51<00:48,  9.66it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1529/2000 
+[02:51<00:48,  9.73it/s]
+ExactExplainer explainer:  
+76%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1530/2000 
+[02:51<00:47,  9.79it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1531/2000 
+[02:52<00:48,  9.60it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1532/2000 
+[02:52<00:48,  9.63it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1533/2000 
+[02:52<00:48,  9.68it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1535/2000 
+[02:52<00:46,  9.92it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1537/2000 
+[02:52<00:46,  9.99it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1538/2000 
+[02:52<00:46,  9.87it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1540/2000 
+[02:53<00:46,  9.93it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1541/2000 
+[02:53<00:46,  9.93it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1543/2000 
+[02:53<00:46,  9.90it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1544/2000 
+[02:53<00:46,  9.80it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1545/2000 
+[02:53<00:46,  9.73it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1547/2000 
+[02:53<00:46,  9.81it/s]
+ExactExplainer explainer:  
+77%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ï  | 1548/2000 
+[02:53<00:46,  9.80it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1550/2000 
+[02:54<00:45,  9.92it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1552/2000 
+[02:54<00:44, 10.14it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1554/2000 
+[02:54<00:44, 10.09it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1556/2000 
+[02:54<00:44,  9.98it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1557/2000 
+[02:54<00:44,  9.88it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1558/2000 
+[02:54<00:44,  9.90it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1559/2000 
+[02:54<00:44,  9.87it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1561/2000 
+[02:55<00:44,  9.97it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1563/2000 
+[02:55<00:44,  9.86it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1565/2000 
+[02:55<00:43,  9.91it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1567/2000 
+[02:55<00:43, 10.05it/s]
+ExactExplainer explainer:  
+78%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1569/2000 
+[02:55<00:43,  9.96it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1571/2000 
+[02:56<00:43,  9.94it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1572/2000 
+[02:56<00:43,  9.85it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+è  | 1574/2000 
+[02:56<00:42,  9.97it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1575/2000 
+[02:56<00:42,  9.90it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1577/2000 
+[02:56<00:42,  9.86it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1578/2000 
+[02:56<00:43,  9.80it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1579/2000 
+[02:56<00:42,  9.84it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1580/2000 
+[02:57<00:43,  9.63it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1581/2000 
+[02:57<00:43,  9.68it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1583/2000 
+[02:57<00:42,  9.92it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1585/2000 
+[02:57<00:42,  9.85it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1586/2000 
+[02:57<00:41,  9.88it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1587/2000 
+[02:57<00:42,  9.66it/s]
+ExactExplainer explainer:  
+79%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1588/2000 
+[02:57<00:42,  9.61it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1590/2000 
+[02:58<00:41,  9.89it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1592/2000 
+[02:58<00:40, 10.13it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1594/2000 
+[02:58<00:40,  9.99it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1596/2000 
+[02:58<00:40, 10.08it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ë  | 1598/2000 
+[02:58<00:39, 10.06it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1600/2000 
+[02:59<00:39, 10.05it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1602/2000 
+[02:59<00:39,  9.99it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1604/2000 
+[02:59<00:39, 10.05it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1606/2000 
+[02:59<00:39, 10.01it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1608/2000 
+[02:59<00:39,  9.85it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1609/2000 
+[02:59<00:39,  9.87it/s]
+ExactExplainer explainer:  
+80%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1610/2000 
+[03:00<00:39,  9.90it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1611/2000 
+[03:00<00:39,  9.80it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1612/2000 
+[03:00<00:40,  9.67it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1613/2000 
+[03:00<00:40,  9.55it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1614/2000 
+[03:00<00:41,  9.29it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1615/2000 
+[03:00<00:40,  9.43it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1616/2000 
+[03:00<00:40,  9.57it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1618/2000 
+[03:00<00:38,  9.87it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1620/2000 
+[03:01<00:38,  9.89it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1621/2000 
+[03:01<00:38,  9.84it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1622/2000 
+[03:01<00:38,  9.74it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1623/2000 
+[03:01<00:38,  9.73it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+ê  | 1624/2000 
+[03:01<00:38,  9.78it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1625/2000 
+[03:01<00:38,  9.83it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1626/2000 
+[03:01<00:37,  9.88it/s]
+ExactExplainer explainer:  
+81%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1628/2000 
+[03:01<00:37,  9.81it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1630/2000 
+[03:02<00:37,  9.80it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1632/2000 
+[03:02<00:37,  9.86it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1634/2000 
+[03:02<00:37,  9.88it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1635/2000 
+[03:02<00:36,  9.87it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1636/2000 
+[03:02<00:36,  9.87it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1637/2000 
+[03:02<00:37,  9.66it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1639/2000 
+[03:03<00:37,  9.63it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1641/2000 
+[03:03<00:36,  9.90it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1642/2000 
+[03:03<00:36,  9.90it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1643/2000 
+[03:03<00:36,  9.74it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1644/2000 
+[03:03<00:36,  9.73it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1646/2000 
+[03:03<00:35,  9.87it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1647/2000 
+[03:03<00:35,  9.87it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÅ | 1648/2000 
+[03:03<00:35,  9.80it/s]
+ExactExplainer explainer:  
+82%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1650/2000 
+[03:04<00:35,  9.96it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1651/2000 
+[03:04<00:35,  9.86it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1653/2000 
+[03:04<00:34, 10.00it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1655/2000 
+[03:04<00:34,  9.99it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1657/2000 
+[03:04<00:34, 10.08it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1659/2000 
+[03:05<00:33, 10.11it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1661/2000 
+[03:05<00:33, 10.05it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1663/2000 
+[03:05<00:33, 10.01it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1665/2000 
+[03:05<00:33, 10.01it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1666/2000 
+[03:05<00:33, 10.00it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1667/2000 
+[03:05<00:33,  9.92it/s]
+ExactExplainer explainer:  
+83%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1669/2000 
+[03:06<00:33,  9.94it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1671/2000 
+[03:06<00:33,  9.73it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1672/2000 
+[03:06<00:33,  9.76it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1673/2000 
+[03:06<00:33,  9.66it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûÄ | 1674/2000 
+[03:06<00:35,  9.17it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1675/2000 
+[03:06<00:34,  9.36it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1677/2000 
+[03:06<00:34,  9.47it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1678/2000 
+[03:07<00:33,  9.49it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1680/2000 
+[03:07<00:33,  9.62it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1681/2000 
+[03:07<00:33,  9.61it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1682/2000 
+[03:07<00:33,  9.62it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1683/2000 
+[03:07<00:32,  9.71it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1684/2000 
+[03:07<00:32,  9.73it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1686/2000 
+[03:07<00:31,  9.90it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1687/2000 
+[03:07<00:31,  9.92it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1688/2000 
+[03:08<00:31,  9.90it/s]
+ExactExplainer explainer:  
+84%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1689/2000 
+[03:08<00:31,  9.86it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1691/2000 
+[03:08<00:30, 10.01it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1693/2000 
+[03:08<00:30, 10.08it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1695/2000 
+[03:08<00:30, 10.01it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1697/2000 
+[03:08<00:30, 10.00it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1698/2000 
+[03:09<00:30, 10.00it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûì | 1699/2000 
+[03:09<00:30,  9.90it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1701/2000 
+[03:09<00:30,  9.93it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1703/2000 
+[03:09<00:29,  9.99it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1705/2000 
+[03:09<00:29, 10.03it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1707/2000 
+[03:09<00:29,  9.94it/s]
+ExactExplainer explainer:  
+85%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1709/2000 
+[03:10<00:29,  9.91it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1711/2000 
+[03:10<00:28,  9.98it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1712/2000 
+[03:10<00:29,  9.92it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1714/2000 
+[03:10<00:28,  9.96it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1715/2000 
+[03:10<00:29,  9.81it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1717/2000 
+[03:10<00:28,  9.89it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1718/2000 
+[03:11<00:28,  9.80it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1720/2000 
+[03:11<00:28,  9.90it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1722/2000 
+[03:11<00:28,  9.75it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûî | 1724/2000 
+[03:11<00:28,  9.66it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1726/2000 
+[03:11<00:28,  9.77it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1728/2000 
+[03:12<00:27,  9.84it/s]
+ExactExplainer explainer:  
+86%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1730/2000 
+[03:12<00:27,  9.97it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1732/2000 
+[03:12<00:26, 10.14it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1734/2000 
+[03:12<00:26,  9.94it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1735/2000 
+[03:12<00:26,  9.93it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1736/2000 
+[03:12<00:26,  9.85it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1737/2000 
+[03:12<00:26,  9.85it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1738/2000 
+[03:13<00:26,  9.85it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1740/2000 
+[03:13<00:25, 10.21it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1742/2000 
+[03:13<00:24, 10.33it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1744/2000 
+[03:13<00:25, 10.22it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1746/2000 
+[03:13<00:25, 10.14it/s]
+ExactExplainer explainer:  
+87%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûï | 1748/2000 
+[03:14<00:24, 10.10it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1750/2000 
+[03:14<00:24, 10.19it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1752/2000 
+[03:14<00:24, 10.12it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1754/2000 
+[03:14<00:24, 10.10it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1756/2000 
+[03:14<00:24,  9.92it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1758/2000 
+[03:15<00:24,  9.97it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1760/2000 
+[03:15<00:23, 10.10it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1762/2000 
+[03:15<00:23, 10.26it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1764/2000 
+[03:15<00:23, 10.08it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1766/2000 
+[03:15<00:23,  9.96it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1768/2000 
+[03:16<00:23,  9.96it/s]
+ExactExplainer explainer:  
+88%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1770/2000 
+[03:16<00:23,  9.97it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1771/2000 
+[03:16<00:23,  9.85it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûè | 1773/2000 
+[03:16<00:22, 10.00it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1775/2000 
+[03:16<00:22, 10.05it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1777/2000 
+[03:16<00:21, 10.23it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1779/2000 
+[03:17<00:21, 10.15it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1781/2000 
+[03:17<00:21, 10.05it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1783/2000 
+[03:17<00:21,  9.93it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1784/2000 
+[03:17<00:21,  9.91it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1785/2000 
+[03:17<00:21,  9.91it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1786/2000 
+[03:17<00:21,  9.75it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1787/2000 
+[03:18<00:25,  8.36it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1788/2000 
+[03:18<00:25,  8.26it/s]
+ExactExplainer explainer:  
+89%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1789/2000 
+[03:18<00:24,  8.62it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1790/2000 
+[03:18<00:23,  8.89it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1791/2000 
+[03:18<00:23,  8.91it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1792/2000 
+[03:18<00:22,  9.16it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1793/2000 
+[03:18<00:22,  9.31it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1794/2000 
+[03:18<00:22,  9.31it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1795/2000 
+[03:18<00:21,  9.49it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1796/2000 
+[03:18<00:21,  9.63it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1797/2000 
+[03:19<00:21,  9.64it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûë | 1798/2000 
+[03:19<00:22,  9.15it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1800/2000 
+[03:19<00:20,  9.63it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1801/2000 
+[03:19<00:20,  9.59it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1803/2000 
+[03:19<00:20,  9.49it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1804/2000 
+[03:19<00:20,  9.52it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1805/2000 
+[03:19<00:20,  9.50it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1806/2000 
+[03:20<00:20,  9.61it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1807/2000 
+[03:20<00:19,  9.66it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1808/2000 
+[03:20<00:19,  9.70it/s]
+ExactExplainer explainer:  
+90%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1810/2000 
+[03:20<00:19,  9.94it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1811/2000 
+[03:20<00:19,  9.75it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1812/2000 
+[03:20<00:19,  9.81it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1814/2000 
+[03:20<00:19,  9.73it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1815/2000 
+[03:20<00:19,  9.73it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1816/2000 
+[03:21<00:19,  9.65it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1817/2000 
+[03:21<00:19,  9.57it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1818/2000 
+[03:21<00:19,  9.56it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1820/2000 
+[03:21<00:18,  9.76it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1821/2000 
+[03:21<00:18,  9.71it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1822/2000 
+[03:21<00:18,  9.58it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1823/2000 
+[03:21<00:18,  9.61it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûê | 1824/2000 
+[03:21<00:18,  9.68it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1826/2000 
+[03:22<00:17,  9.74it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1828/2000 
+[03:22<00:17,  9.84it/s]
+ExactExplainer explainer:  
+91%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1829/2000 
+[03:22<00:17,  9.79it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1831/2000 
+[03:22<00:17,  9.76it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1833/2000 
+[03:22<00:17,  9.36it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1834/2000 
+[03:22<00:17,  9.28it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1836/2000 
+[03:23<00:17,  9.43it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1837/2000 
+[03:23<00:17,  9.24it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1839/2000 
+[03:23<00:17,  9.35it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1840/2000 
+[03:23<00:17,  9.32it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1841/2000 
+[03:23<00:17,  9.22it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1843/2000 
+[03:23<00:16,  9.52it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1844/2000 
+[03:24<00:16,  9.48it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1845/2000 
+[03:24<00:16,  9.46it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1846/2000 
+[03:24<00:16,  9.32it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1847/2000 
+[03:24<00:16,  9.40it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1848/2000 
+[03:24<00:16,  9.35it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÅ| 1849/2000 
+[03:24<00:16,  9.41it/s]
+ExactExplainer explainer:  
+92%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1850/2000 
+[03:24<00:16,  9.04it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1851/2000 
+[03:24<00:17,  8.46it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1852/2000 
+[03:24<00:17,  8.49it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1853/2000 
+[03:25<00:16,  8.73it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1854/2000 
+[03:25<00:16,  8.94it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1855/2000 
+[03:25<00:16,  8.93it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1856/2000 
+[03:25<00:16,  8.92it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1857/2000 
+[03:25<00:16,  8.73it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1858/2000 
+[03:25<00:15,  8.98it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1859/2000 
+[03:25<00:15,  9.23it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1860/2000 
+[03:25<00:14,  9.44it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1861/2000 
+[03:25<00:16,  8.52it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1862/2000 
+[03:26<00:16,  8.33it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1863/2000 
+[03:26<00:16,  8.55it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1864/2000 
+[03:26<00:15,  8.64it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1865/2000 
+[03:26<00:15,  8.98it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1866/2000 
+[03:26<00:14,  9.16it/s]
+ExactExplainer explainer:  
+93%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1868/2000 
+[03:26<00:13,  9.64it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1870/2000 
+[03:26<00:13,  9.75it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1872/2000 
+[03:27<00:12,  9.95it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûÄ| 1873/2000 
+[03:27<00:12,  9.87it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1875/2000 
+[03:27<00:12,  9.89it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1877/2000 
+[03:27<00:12,  9.81it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1878/2000 
+[03:27<00:12,  9.56it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1879/2000 
+[03:27<00:12,  9.43it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1881/2000 
+[03:28<00:12,  9.72it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1882/2000 
+[03:28<00:12,  9.69it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1883/2000 
+[03:28<00:11,  9.75it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1885/2000 
+[03:28<00:11,  9.75it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1887/2000 
+[03:28<00:11,  9.81it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1888/2000 
+[03:28<00:11,  9.71it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1889/2000 
+[03:28<00:11,  9.74it/s]
+ExactExplainer explainer:  
+94%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1890/2000 
+[03:28<00:11,  9.30it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1891/2000 
+[03:29<00:11,  9.47it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1892/2000 
+[03:29<00:11,  9.60it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1893/2000 
+[03:29<00:11,  9.43it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1895/2000 
+[03:29<00:10,  9.79it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1897/2000 
+[03:29<00:10,  9.89it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûì| 1899/2000 
+[03:29<00:10,  9.93it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1901/2000 
+[03:30<00:10,  9.88it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1902/2000 
+[03:30<00:10,  9.74it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1904/2000 
+[03:30<00:09,  9.95it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1905/2000 
+[03:30<00:09,  9.83it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1906/2000 
+[03:30<00:09,  9.64it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1907/2000 
+[03:30<00:10,  9.24it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1908/2000 
+[03:30<00:10,  9.18it/s]
+ExactExplainer explainer:  
+95%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1909/2000 
+[03:30<00:10,  8.96it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1910/2000 
+[03:31<00:10,  8.96it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1911/2000 
+[03:31<00:09,  9.22it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1912/2000 
+[03:31<00:09,  9.38it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1913/2000 
+[03:31<00:09,  9.40it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1914/2000 
+[03:31<00:09,  9.37it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1915/2000 
+[03:31<00:08,  9.50it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1916/2000 
+[03:31<00:08,  9.42it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1917/2000 
+[03:31<00:08,  9.58it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1919/2000 
+[03:31<00:08,  9.78it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1920/2000 
+[03:32<00:08,  9.84it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1921/2000 
+[03:32<00:08,  9.62it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1922/2000 
+[03:32<00:08,  9.71it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1923/2000 
+[03:32<00:07,  9.65it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûî| 1924/2000 
+[03:32<00:07,  9.74it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1925/2000 
+[03:32<00:07,  9.62it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1927/2000 
+[03:32<00:07,  9.80it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1928/2000 
+[03:32<00:07,  9.71it/s]
+ExactExplainer explainer:  
+96%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1929/2000 
+[03:32<00:07,  9.68it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1931/2000 
+[03:33<00:07,  9.18it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1932/2000 
+[03:33<00:07,  9.03it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1934/2000 
+[03:33<00:07,  9.10it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1935/2000 
+[03:33<00:07,  8.99it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1936/2000 
+[03:33<00:07,  8.88it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1937/2000 
+[03:33<00:07,  8.59it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1938/2000 
+[03:34<00:07,  8.64it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1939/2000 
+[03:34<00:07,  8.70it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1940/2000 
+[03:34<00:06,  8.95it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1942/2000 
+[03:34<00:06,  9.07it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1943/2000 
+[03:34<00:06,  9.23it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1944/2000 
+[03:34<00:05,  9.41it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1945/2000 
+[03:34<00:05,  9.54it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1946/2000 
+[03:34<00:05,  9.54it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1948/2000 
+[03:35<00:05,  9.72it/s]
+ExactExplainer explainer:  
+97%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûï| 1949/2000 
+[03:35<00:05,  9.78it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1950/2000 
+[03:35<00:05,  9.75it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1952/2000 
+[03:35<00:04, 10.07it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1953/2000 
+[03:35<00:04,  9.76it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1954/2000 
+[03:35<00:04,  9.74it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1955/2000 
+[03:35<00:04,  9.66it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1957/2000 
+[03:35<00:04,  9.95it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1958/2000 
+[03:36<00:04,  9.95it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1959/2000 
+[03:36<00:04,  9.95it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1961/2000 
+[03:36<00:03,  9.85it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1962/2000 
+[03:36<00:03,  9.87it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1963/2000 
+[03:36<00:03,  9.81it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1965/2000 
+[03:36<00:03,  9.97it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1967/2000 
+[03:36<00:03,  9.96it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1968/2000 
+[03:37<00:03,  9.91it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1969/2000 
+[03:37<00:03,  9.80it/s]
+ExactExplainer explainer:  
+98%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1970/2000 
+[03:37<00:03,  9.84it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1971/2000 
+[03:37<00:03,  9.37it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûè| 1973/2000 
+[03:37<00:02,  9.69it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1975/2000 
+[03:37<00:02,  9.81it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1976/2000 
+[03:37<00:02,  9.85it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1977/2000 
+[03:38<00:02,  9.88it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1978/2000 
+[03:38<00:02,  9.90it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1979/2000 
+[03:38<00:02,  9.74it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1980/2000 
+[03:38<00:02,  9.68it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1982/2000 
+[03:38<00:01,  9.77it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1984/2000 
+[03:38<00:01,  9.97it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1986/2000 
+[03:38<00:01,  9.69it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1987/2000 
+[03:39<00:01,  9.75it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1988/2000 
+[03:39<00:01,  9.80it/s]
+ExactExplainer explainer:  
+99%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1989/2000 
+[03:39<00:01,  9.81it/s]
+ExactExplainer explainer: 1
+00%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1990/2000 
+[03:39<00:01,  9.82it/s]
+ExactExplainer explainer: 1
+00%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1991/2000 
+[03:39<00:00,  9.67it/s]
+ExactExplainer explainer: 1
+00%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1992/2000 
+[03:39<00:00,  9.48it/s]
+ExactExplainer explainer: 1
+00%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1993/2000 
+[03:39<00:00,  9.62it/s]
+ExactExplainer explainer: 1
+00%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1994/2000 
+[03:39<00:00,  9.67it/s]
+ExactExplainer explainer: 1
+00%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1995/2000 
+[03:39<00:00,  9.55it/s]
+ExactExplainer explainer: 1
+00%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1997/2000 
+[03:40<00:00,  9.65it/s]
+ExactExplainer explainer: 1
+00%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1998/2000 
+[03:40<00:00,  9.71it/s]
+ExactExplainer explainer: 1
+00%|ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓû
+êΓûêΓûë| 1999/2000 
+[03:40<00:00,  9.69it/s]
+ExactExplainer explainer: 
+2001it [03:40,  9.82it/s]  
+                        
+ExactExplainer explainer: 
+2001it [03:40,  9.07it/s]
+2026/02/20 17:45:08 INFO 
+mlflow.tracking.fluent: 
+Experiment with name 
+'evaluation' does not 
+exist. Creating a new 
+experiment.
+  SHAP analysis complete.
+  Saved -> shap_values.csv, shap_summary.png, shap_feature_importance.png
+
+  <<  12/17  SHAP Explainability completed in 221.3s
+
+____________________________________________________________
+  >>  Stage 13/17  Failure Analysis
+____________________________________________________________
+
+============================================================
+FAILURE ANALYSIS SERVICE ΓÇö Error analysis
+============================================================
+  Confusion: TP=149  TN=3945  FP=145  FN=1024
+  False negatives: 1024  |  False positives: 145
+  Saved -> predictions_full.csv, confusion_matrix.csv, false_negatives.csv, false_positives.csv
+
+  <<  13/17  Failure Analysis completed in 0.1s
+
+____________________________________________________________
+  >>  Stage 14/17  Layover Risk Scoring
+____________________________________________________________
+
+============================================================
+LAYOVER RISK SERVICE ΓÇö Computing unified risk score
+============================================================
+  All 4 models loaded
+  -> Delay predictions
+  -> Congestion forecast
+  -> Anomaly detection
+  -> Buffer prediction
+  -> Computing unified risk score
+
+  Risk score range: [0.043, 0.717]
+  Mean buffer: 36.3 min
+  Anomalies: 999 (4.6%)
+  Saved -> layover_risk.csv  (21725 rows)
+
+  <<  14/17  Layover Risk Scoring completed in 0.5s
+
+____________________________________________________________
+  >>  Stage 15/17  Miss Probability
+____________________________________________________________
+
+============================================================
+MISS PROBABILITY SERVICE ΓÇö Estimating flight miss risk
+============================================================
+
+  Mean miss probability: 0.244
+
+  Risk band distribution:
+miss_risk_band
+caution    10313
+safe        8274
+danger      3138
+
+  Saved -> miss_probability.csv  (21725 rows)
+
+  <<  15/17  Miss Probability completed in 0.2s
+
+____________________________________________________________
+  >>  Stage 16/17  Model Evaluation
+____________________________________________________________
+
+============================================================
+EVALUATION SERVICE ΓÇö Delay model evaluation
+============================================================
+
+  Delay Model AUC: 0.6070
+
+  Delay rate by risk bucket:
+bucket
+low       0.202970
+medium    0.269231
+high      0.550661
+
+  Classification Report (threshold=0.5):
+              precision    recall  f1-score   support
+
+     on-time       0.79      0.96      0.87      4090
+     delayed       0.51      0.13      0.20      1173
+
+    accuracy                           0.78      5263
+   macro avg       0.65      0.55      0.54      5263
+weighted avg       0.73      0.78      0.72      5263
+
+
+  <<  16/17  Model Evaluation completed in 0.2s
+
+____________________________________________________________
+  >>  Stage 17/17  Simulation Test
+____________________________________________________________
+
+============================================================
+SIMULATION TEST ΓÇö Validating full pipeline outputs
+============================================================
+
+  1. DATA FILES
+  [+] silver_validated.csv exists
+  [+] congestion features exist
+  [+] congestion forecast features exist
+  [+] delay train features exist
+  [+] delay test features exist
+  [+] buffer features exist
+
+  2. MODEL FILES
+  [+] delay model exists
+  [+] congestion forecaster exists
+  [+] anomaly detector exists
+  [+] buffer model exists
+  [+] calibrated model exists
+  [+] uncertainty stats exist
+
+  3. REPORT FILES
+  [+] delay predictions exist
+  [+] layover risk report exists
+  [+] training metrics exist
+  [+] miss probability report exists
+
+  4. SCHEMA VALIDATION
+  [+] train features have all expected columns
+  [+] train has sufficient rows (16478)
+  [+] predictions have delay_prob
+  [+] predictions have is_delayed
+  [+] delay_prob in [0, 1]
+  [+] layover risk has 'delay_prob'
+  [+] layover risk has 'predicted_congestion'
+  [+] layover risk has 'is_anomaly'
+  [+] layover risk has 'buffer_minutes'
+  [+] layover risk has 'risk'
+  [+] risk score in [0, 1]
+  [+] miss report has 'miss_probability'
+  [+] miss_probability in [0, 1]
+
+  5. METRIC THRESHOLDS
+  [+] delay AUC > 0.55 (actual: 0.6070)
+  [+] uncertainty has mean + std rows
+  [+] max uncertainty < 0.5 (actual: 0.3031)
+
+  6. INFERENCE SMOKE TEST
+  [+] delay model produces 10 predictions
+  [+] all predictions in [0, 1]
+
+============================================================
+  RESULTS: 34/34 passed, 0 failed
+============================================================
+  All tests passed!
+
+  <<  17/17  Simulation Test completed in 0.1s
+
+____________________________________________________________
+  All 17 stages completed in 342.7s
+____________________________________________________________

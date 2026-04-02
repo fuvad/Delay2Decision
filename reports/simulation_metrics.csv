@@ -1,0 +1,2 @@
+total_runs,success_rate,failure_rate,missed_gate_count,avg_trip_time,avg_buffer_used,avg_unused_buffer,slow_walker_count,slow_walker_failure_rate,terminal_4_success,terminal_5_success,terminal_7_success,terminal_8_success
+1000,0.999,0.001,1,17.63,17.62,17.38,40,0.025,0.9956,1.0,1.0,1.0

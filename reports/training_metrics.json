@@ -1,0 +1,11 @@
+{
+  "champion": "GradientBoosting",
+  "champion_auc": 0.6043,
+  "all_results": {
+    "GradientBoosting": 0.6043,
+    "RandomForest": 0.6026,
+    "LogisticRegression": 0.5916
+  },
+  "train_rows": 16478,
+  "test_rows": 5263
+}

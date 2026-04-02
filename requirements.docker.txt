@@ -1,0 +1,24 @@
+# Core API
+fastapi==0.128.0
+uvicorn==0.40.0
+pydantic==2.12.5
+
+# ML & Data
+scikit-learn==1.7.2
+numpy==2.2.6
+pandas==2.3.3
+joblib==1.5.3
+xgboost==3.1.3
+lightgbm==4.6.0
+
+# HTTP (for Groq/Ollama calls)
+requests==2.32.5
+
+# Graph traversal
+networkx
+
+# LangGraph agent workflow
+langgraph
+
+# Airport layout / pathfinding
+scipy==1.15.3

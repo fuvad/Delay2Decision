@@ -1,21 +1,26 @@
-# data
-data/
+# Raw and heavy offline data
+data/bronze/
+data/silver/
+data/gold/
+data/processed/
+data/features/
+data/simulated/
+data/raw/flight_delay/
+data/raw/weather/
+data/raw/flights/
 
-# trained models & arrays
+# Ignore Trained models and heavy arrays
 models/
 *.pkl
 *.joblib
 *.npy
+mlruns/
 
-# reports / outputs
-reports/
-*.png
-*.csv
-
-# python junk
+# Ignore python junk
 __pycache__/
 .ipynb_checkpoints/
-
-# env
 .env
 venv/
+
+# NOTE: We DO NOT ignore reports/, data/layout/, or data/raw/airports/. 
+# Those contain the tiny baked CSVs required by the app perfectly fine for Git.

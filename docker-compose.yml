@@ -1,0 +1,23 @@
+version: '3.8'
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      # If you set this locally, the docker container will inherit it!
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    volumes:
+      # Mount the app folder so you don't have to rebuild the image when writing code
+      - .:/app
+
+  frontend:
+    build:
+      context: ./frontend/react-app
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend

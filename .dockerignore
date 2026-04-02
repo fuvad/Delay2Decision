@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Python dev artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+myenv/
+venv/
+
+# Jupyter notebooks (not needed at runtime)
+*.ipynb
+.ipynb_checkpoints/
+
+# MLflow experiment runs (massive - not needed at runtime)
+mlruns/
+
+# Raw and heavy training data (not needed at runtime)
+data/bronze/
+data/silver/
+data/gold/
+data/processed/
+data/features/
+data/simulated/
+data/raw/flight_delay/
+data/raw/weather/
+
+# Log files (specific names only — do NOT use *.txt as it would block requirements.docker.txt)
+*.log
+pipeline_error_log.txt
+full_pipeline_log.txt
+orchestrator_log.txt
+
+# Test files
+tests/
+
+# Node / frontend (has its own Dockerfile)
+frontend/
+
+# IDE config
+.vscode/
+.idea/

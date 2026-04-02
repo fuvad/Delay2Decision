@@ -1,0 +1,50 @@
+﻿============================================================
+DELAY2DECISION -- Full Pipeline (w/ Real ML Predictions)
+============================================================
+
+--- Scenario 1: Safe trip (Low Risk Flight) ---
+  Decision:  NO
+  Risk:      low
+  Action:    Stay at GATE_B1. Not enough time for a safe trip.
+  Planner:   {'feasible': np.True_, 'required_minutes': np.float64(10.6)}
+  Sim:       {'total_minutes': np.float64(10.6), 'walk_minutes': np.float64(5.6), 'stay_minutes': 5.0}
+
+  Context Summary (Terminal 4)
+  Flight delay probability: 0.08 (low)
+  Terminal congestion:      low
+  System uncertainty:       0.17
+  Buffer recommended:       18 minutes
+  Passenger walking speed:  normal (1.4 m/s)
+  Route:                    GATE_B1 -> STARBUCKS_T4
+  Stay time:                5 minutes
+
+  GUARDIAN: All safety checks passed.
+
+  [AI Explanation]
+I'd be happy to explain our decision to you. Since Gate B1 is located in Terminal 4, and Starbucks T4 is also inside the terminal, we've determined that it's not safe for you to leave the gate during your layover. The risk of missing your connecting flight due to unforeseen circumstances or getting lost within the terminal outweighs the convenience of grabbing a quick coffee or snack.
+
+
+--- Scenario 2: Risky trip (High Risk Flight) ---
+  Decision:  NO
+  Risk:      high
+  Action:    Stay at GATE_B1. Not enough time for a safe trip.
+
+  GUARDIAN ALERTS:
+  [!] Delay probability is very high (91%). Recommend staying at gate.
+
+  [AI Explanation]
+I completely understand your desire to grab a bite or pick up something from MC_DONALDS_T4, but I'm afraid it's not possible to leave the gate during your layover. The airport has taken into account the high flight delay probability of 91% and ensured that you have an adequate buffer time of 12 minutes, which is already accounted for in our system. Leaving the gate would compromise this safety measure and potentially put you at risk.
+
+
+--- Scenario 3: Slow walker (Medium Risk Flight) ---
+  Decision:  NO
+  Risk:      low
+  Action:    Stay at GATE_D1. Not enough time for a safe trip.
+
+  GUARDIAN ALERTS:
+  [!] Slow walker (0.9 m/s) with tight buffer. High miss risk.
+
+  [AI Explanation]
+I completely understand your desire to grab a snack or do some shopping, but unfortunately, we've made the decision not to allow you to leave the gate due to safety concerns. The terminal is designed with security and crowd control measures in place, and having too many people moving around can create congestion and potential risks. By staying at your gate, you'll be able to stay safe while still enjoying some amenities during your layover.
+
+============================================================
