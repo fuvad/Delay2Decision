@@ -28,6 +28,7 @@ data/features/
 data/simulated/
 data/raw/flight_delay/
 data/raw/weather/
+data/raw/flights/
 
 # Log files (specific names only — do NOT use *.txt as it would block requirements.docker.txt)
 *.log
