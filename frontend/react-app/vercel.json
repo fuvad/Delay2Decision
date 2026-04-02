@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://backend-service-110960003188.us-central1.run.app/api/:path*"
+    }
+  ]
+}
