@@ -32,6 +32,7 @@ data/raw/flights/
 
 # Log files (specific names only — do NOT use *.txt as it would block requirements.docker.txt)
 *.log
+test_*.txt
 pipeline_error_log.txt
 full_pipeline_log.txt
 orchestrator_log.txt
