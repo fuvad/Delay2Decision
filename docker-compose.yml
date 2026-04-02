@@ -12,12 +12,3 @@ services:
     volumes:
       # Mount the app folder so you don't have to rebuild the image when writing code
       - .:/app
-
-  frontend:
-    build:
-      context: ./frontend/react-app
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
