@@ -48,6 +48,63 @@ app.add_middleware(
 )
 
 
+# ── Structured Logging for GCP ─────────────────────────────────────
+import logging
+import json
+import time
+from fastapi import Request
+
+class GCPFormatter(logging.Formatter):
+    def format(self, record):
+        log_record = {
+            "severity": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name,
+        }
+        if hasattr(record, "request_info"):
+            log_record["request"] = record.request_info
+        if hasattr(record, "llm_info"):
+            log_record["llm"] = record.llm_info
+        if record.exc_info:
+            log_record["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
+
+logger = logging.getLogger("delay2decision")
+logger.setLevel(logging.INFO)
+# Clear out any default handlers
+if logger.hasHandlers():
+    logger.handlers.clear()
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(GCPFormatter())
+logger.addHandler(handler)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+        duration = time.time() - start_time
+        logger.info(f"{request.method} {request.url.path} - {response.status_code}", extra={
+            "request_info": {
+                "method": request.method,
+                "url": request.url.path,
+                "status": response.status_code,
+                "duration_ms": round(duration * 1000, 2)
+            }
+        })
+        return response
+    except Exception as e:
+        duration = time.time() - start_time
+        logger.error(f"Request failed: {request.method} {request.url.path} - {str(e)}", exc_info=True, extra={
+            "request_info": {
+                "method": request.method,
+                "url": request.url.path,
+                "status": 500,
+                "duration_ms": round(duration * 1000, 2)
+            }
+        })
+        raise
+
 # ── Helper: get ML predictions from CSV ────────────────────────────
 # Full airline name lookup for better chatbot context
 _AIRLINE_NAMES = {
@@ -143,6 +200,7 @@ def create_plan(req: PlanRequest):
             walking_speed=req.walking_speed,
         )
     except Exception as e:
+        logger.error("Plan endpoint pipeline failure", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
     go_result = result.get("go_result", {})
@@ -619,7 +677,7 @@ def _call_llm(prompt: str, json_format: bool = False, timeout: int = 30) -> str 
             if resp.status_code == 200:
                 return resp.json()["choices"][0]["message"]["content"]
         except Exception as e:
-            print(f"Groq API error: {e}")
+            logger.error("Groq API LLM Failure", exc_info=True, extra={"llm_info": {"model": "llama-3.1-8b-instant", "provider": "groq", "error": str(e)}})
             return None
             
     # Fallback to local Ollama
@@ -632,7 +690,7 @@ def _call_llm(prompt: str, json_format: bool = False, timeout: int = 30) -> str 
         if resp.status_code == 200:
             return resp.json().get("response", "")
     except Exception as e:
-        print(f"Ollama local error: {e}")
+        logger.error("Ollama local LLM Failure", exc_info=True, extra={"llm_info": {"model": "llama3.2:3b", "provider": "ollama", "error": str(e)}})
         return None
     return None
 
