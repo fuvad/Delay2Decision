@@ -1,0 +1,81 @@
+﻿============================================================
+  Delay2Decision ù Monitoring Verification
+============================================================
+
+STEP 1 ù Structured JSON Logging
+----------------------------------------
+  Sample log line:
+  {"severity": "INFO", "message": "POST /api/plan - 200", "logger": "delay2decision.verify", "request": {"method": "POST", "url": "/api/plan", "status": 200, "duration_ms": 142.5}}
+python : Traceback (most 
+recent call last):
+At line:1 char:1
++ python mlops/monitoring
+/verify_monitoring.py 
+2>&1 | Out-File -Encodin 
+...
++ ~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
+~
+    + CategoryInfo       
+       : NotSpecified:   
+  (Traceback (most rec   
+ ent call last)::Stri    
+ng) [], RemoteExcept    
+ion
+    + FullyQualifiedErro 
+   rId : NativeCommandE  
+  rror
+ 
+  File "C:\Users\fuvad\On
+eDrive\Desktop\New\Main P
+roject\main\Delay2Decisio
+n\mlops\monitoring\verify
+_monitoring.py", line 
+72, in <module>
+    print(f"  {PASS} ù 
+GCPFormatter emits valid 
+JSON with severity, 
+message, request fields")
+  File "C:\Users\fuvad\Ap
+pData\Local\Programs\Pyth
+on\Python310\lib\encoding
+s\cp1252.py", line 19, 
+in encode
+    return codecs.charmap
+_encode(input,self.errors
+,encoding_table)[0]
+UnicodeEncodeError: 
+'charmap' codec can't 
+encode character 
+'\u2705' in position 2: 
+character maps to 
+<undefined>
+
+During handling of the 
+above exception, another 
+exception occurred:
+
+Traceback (most recent 
+call last):
+  File "C:\Users\fuvad\On
+eDrive\Desktop\New\Main P
+roject\main\Delay2Decisio
+n\mlops\monitoring\verify
+_monitoring.py", line 
+74, in <module>
+    print(f"  {FAIL} ù 
+{e}")
+  File "C:\Users\fuvad\Ap
+pData\Local\Programs\Pyth
+on\Python310\lib\encoding
+s\cp1252.py", line 19, 
+in encode
+    return codecs.charmap
+_encode(input,self.errors
+,encoding_table)[0]
+UnicodeEncodeError: 
+'charmap' codec can't 
+encode character 
+'\u274c' in position 2: 
+character maps to 
+<undefined>

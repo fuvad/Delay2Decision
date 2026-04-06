@@ -1,0 +1,65 @@
+﻿============================================================
+  Delay2Decision -- Monitoring Verification
+============================================================
+
+STEP 1 -- Structured JSON Logging
+----------------------------------------
+  Sample log line:
+  {"severity": "INFO", "message": "POST /api/plan - 200", "logger": "delay2decision.verify", "request": {"method": "POST", "url": "/api/plan", "status": 200, "duration_ms": 142.5}}
+  [PASS] -- GCPFormatter emits valid JSON (severity, message, request fields)
+  [PASS] -- app.py has GCPFormatter, log_requests middleware, and _log_request_features
+
+STEP 2 -- GCP Alert Setup Script
+----------------------------------------
+  Script location: mlops\monitoring\setup_gcp_alerts.sh
+  Alert policies defined: 3
+  Alerts:
+    [1] D2D - High 5xx Error Rate  (>5% requests fail in 5min) -- severity: ERROR
+    [2] D2D - High p99 Latency     (p99 > 3000ms)             -- severity: WARNING
+    [3] D2D - Container Restart    (any restart event)        -- severity: CRITICAL
+  [PASS] -- Script exists with all 3 alert policies
+  [INFO] To activate: fill NOTIFICATION_CHANNEL in the script, then run with gcloud CLI
+
+STEP 3 -- Evidently AI Drift Detection
+----------------------------------------
+  drift_check.py: OK (evidently, load_reference, load_current, run_drift_check)
+  reference CSV: data/gold/delay_features_train.csv -- EXISTS
+  Feature mapping OK: 'delay_prob' <- 'carrier_avg_delay' in reference CSV
+  Feature mapping OK: 'uncertainty' <- 'weather_severity' in reference CSV
+  Feature mapping OK: 'buffer_minutes' <- 'rolling_origin_delay' in reference CSV
+  request_log.jsonl: 30 entries -- OK
+  Sample entry: {'delay_prob': 0.4191, 'uncertainty': 0.1381, 'buffer_minutes': 3.17, 'itinerary_minutes': 120.0}
+  STDOUT: empty
+  STDERR: empty
+  [FAIL] -- Exit code 2
+
+STEP 4 -- GitHub Actions Monitor Workflow
+----------------------------------------
+  OK  manual trigger (workflow_dispatch)
+  OK  drift-check job
+  OK  artifact upload step
+  OK  job summary output
+  OK  drift_check.py invocation
+  OK  continue-on-error for drift step
+  Workflow steps (8):
+    - Checkout Repository
+    - Set up Python
+    - Install Monitoring Dependencies
+    - Create dummy request log if missing
+    - Run Drift Check
+    - Upload Drift Report
+    - Write Job Summary
+    - Fail if drift was detected
+  [PASS] -- monitor.yml has all required elements
+  [INFO] To run: GitHub -> Actions -> 'Monitoring -- Drift & Health Check' -> Run workflow
+
+============================================================
+  SUMMARY
+============================================================
+  [PASS]  Step 1 -- Structured JSON Logging
+  [PASS]  Step 2 -- GCP Alert Setup Script
+  [FAIL]  Step 3 -- Evidently AI Drift Detection
+  [PASS]  Step 4 -- GitHub Actions Monitor Workflow
+
+  Some steps need attention -- see details above.
+============================================================

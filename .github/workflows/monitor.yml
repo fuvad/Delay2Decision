@@ -1,0 +1,83 @@
+name: 📊 Monitoring — Drift & Health Check
+
+on:
+  # Manual trigger from the GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for running the check (optional note)"
+        required: false
+        default: "Manual health check"
+
+env:
+  PROJECT_ID: delay2decision
+  REGION: us-central1
+
+jobs:
+  drift-check:
+    name: Data Drift Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Monitoring Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install evidently pandas
+
+      - name: Create dummy request log if missing
+        # Prevents drift_check.py from failing on a fresh repo — it will exit cleanly
+        run: |
+          mkdir -p mlops/monitoring
+          if [ ! -f mlops/monitoring/request_log.jsonl ]; then
+            echo "No request_log.jsonl found — drift check will exit cleanly."
+          fi
+
+      - name: Run Drift Check
+        id: drift
+        # exit 1 = drift detected (fail the job), exit 2 = setup error
+        run: |
+          python mlops/monitoring/drift_check.py
+        continue-on-error: true
+
+      - name: Upload Drift Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report-${{ github.run_number }}
+          path: reports/drift_report.html
+          if-no-files-found: ignore
+
+      - name: Write Job Summary
+        if: always()
+        run: |
+          echo "## 📊 Delay2Decision — Monitoring Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Reason:** ${{ github.event.inputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.drift.outcome }}" == "success" ]; then
+            echo "### ✅ Drift Check: PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "No significant data drift detected. Model inputs look healthy." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.drift.outcome }}" == "failure" ]; then
+            echo "### ⚠️ Drift Check: DRIFT DETECTED" >> $GITHUB_STEP_SUMMARY
+            echo "Input feature distribution has shifted from the training baseline." >> $GITHUB_STEP_SUMMARY
+            echo "Download the **drift-report** artifact above to review the full Evidently report." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ℹ️ Drift Check: SKIPPED" >> $GITHUB_STEP_SUMMARY
+            echo "Not enough production data logged yet (< 20 requests)." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Fail if drift was detected
+        if: steps.drift.outcome == 'failure'
+        run: |
+          echo "❌ Drift detected — marking workflow as failed."
+          exit 1

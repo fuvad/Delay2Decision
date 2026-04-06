@@ -78,6 +78,23 @@ handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(GCPFormatter())
 logger.addHandler(handler)
 
+
+# ── Request Feature Logger (for drift monitoring) ──────────────────
+import json as _json
+from pathlib import Path as _Path
+
+_REQUEST_LOG_PATH = _Path(PROJECT_ROOT) / "mlops" / "monitoring" / "request_log.jsonl"
+
+def _log_request_features(features: dict):
+    """Append prediction request features to JSONL file for drift monitoring."""
+    try:
+        _REQUEST_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_REQUEST_LOG_PATH, "a") as f:
+            f.write(_json.dumps(features) + "\n")
+    except Exception:
+        pass  # Never let logging crash the API
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
@@ -238,6 +255,14 @@ def create_plan(req: PlanRequest):
         violated=constraints_raw.get("violated", []),
     )
 
+    # ── Log features for drift monitoring ──────────────────────────
+    _log_request_features({
+        "delay_prob": round(delay_prob, 4),
+        "uncertainty": round(uncertainty, 4),
+        "buffer_minutes": round(buffer_minutes, 2),
+        "itinerary_minutes": req.itinerary_minutes,
+    })
+
     return PlanResponse(
         decision=result["decision"],
         risk_level=effective_risk_level,
@@ -253,6 +278,7 @@ def create_plan(req: PlanRequest):
         simulation=sim,
         constraints=constraints,
     )
+
 
 
 # ── Endpoint: POST /api/replan ─────────────────────────────────────

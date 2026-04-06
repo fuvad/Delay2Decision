@@ -1,0 +1,44 @@
+﻿python : 2026-04-06 
+12:02:36,646 [INFO] =====
+=========================
+=========================
+=====
+At line:1 char:1
++ python -X utf8 mlops/mo
+nitoring/drift_check.py 
+2>&1 | Out-File -Encod 
+...
++ ~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~
+    + CategoryInfo       
+       : NotSpecified:   
+  (2026-04-06 12:0...=   
+ ==============:Strin    
+g) [], RemoteExcepti    
+on
+    + FullyQualifiedErro 
+   rId : NativeCommandE  
+  rror
+ 
+2026-04-06 12:02:36,646 
+[INFO] Delay2Decision 
+ΓÇö Data Drift Check
+2026-04-06 12:02:36,646 
+[INFO] Timestamp: 2026-04
+-06T06:32:36.646554Z
+2026-04-06 12:02:36,646 
+[INFO] ==================
+=========================
+=================
+2026-04-06 12:02:36,646 
+[INFO] Loading reference 
+data from: C:\Users\fuvad
+\OneDrive\Desktop\New\Mai
+n Project\main\Delay2Deci
+sion\data\gold\delay_feat
+ures_train.csv
+2026-04-06 12:02:40,149 
+[ERROR] Evidently not 
+installed. Run: pip 
+install evidently
