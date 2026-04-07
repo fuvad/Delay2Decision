@@ -1,4 +1,4 @@
-name: 📊 Monitoring — Drift & Health Check
+name: Monitoring — Drift & Health Check
 
 on:
   # Manual trigger from the GitHub Actions tab
