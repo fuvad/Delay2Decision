@@ -1,6 +1,13 @@
 name: Monitoring - Drift & Health Check
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**'
+      - '!frontend/**'
+      - '!.github/**'
   workflow_dispatch:
     inputs:
       reason:
@@ -33,12 +40,9 @@ jobs:
           pip install --upgrade pip
           pip install evidently pandas
 
-      - name: Create dummy request log if missing
+      - name: Prepare monitoring workspace
         run: |
-          mkdir -p mlops/monitoring
-          if [ ! -f mlops/monitoring/request_log.jsonl ]; then
-            echo "No request_log.jsonl found - drift check may skip cleanly."
-          fi
+          mkdir -p mlops/monitoring reports
 
       - name: Run Drift Check
         id: drift
@@ -81,25 +85,31 @@ jobs:
       - name: Write Job Summary
         if: always()
         run: |
+          trigger_reason="Push to ${GITHUB_REF_NAME}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            trigger_reason="${{ github.event.inputs.reason }}"
+          fi
+
           echo "## Delay2Decision Monitoring Report" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Run triggered by:** ${{ github.actor }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Reason:** ${{ github.event.inputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Event:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Reason:** ${trigger_reason}" >> "$GITHUB_STEP_SUMMARY"
           echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_STEP_SUMMARY"
           echo "**Drift check exit code:** ${{ steps.drift.outputs.exit_code }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ steps.drift.outputs.status }}" = "passed" ]; then
             echo "### Drift Check: PASSED" >> "$GITHUB_STEP_SUMMARY"
-            echo "No significant data drift detected. Model inputs look healthy." >> "$GITHUB_STEP_SUMMARY"
+            echo "No significant batch drift detected. The latest layover_risk.csv looks stable." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.drift.outputs.status }}" = "drift" ]; then
             echo "### Drift Check: DRIFT DETECTED" >> "$GITHUB_STEP_SUMMARY"
-            echo "Input feature distribution has shifted from the training baseline." >> "$GITHUB_STEP_SUMMARY"
+            echo "The latest batch output has shifted from the git baseline and should be reviewed before deployment." >> "$GITHUB_STEP_SUMMARY"
             echo "Download the **drift-report** artifact to review the full Evidently report." >> "$GITHUB_STEP_SUMMARY"
             echo "Download the **drift-logs** artifact for the raw script output." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.drift.outputs.status }}" = "skipped" ]; then
             echo "### Drift Check: SKIPPED" >> "$GITHUB_STEP_SUMMARY"
-            echo "Not enough production data logged yet (< 20 requests)." >> "$GITHUB_STEP_SUMMARY"
+            echo "The drift check skipped cleanly because a comparison baseline or current batch output was not available." >> "$GITHUB_STEP_SUMMARY"
             echo "Download the **drift-logs** artifact for the raw script output." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### Drift Check: ERROR" >> "$GITHUB_STEP_SUMMARY"
