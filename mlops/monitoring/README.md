@@ -1,6 +1,6 @@
-# Delay2Decision — Monitoring & Observability
+# Delay2Decision - Monitoring & Observability
 
-This folder contains all monitoring infrastructure for the Delay2Decision backend.
+This folder contains the monitoring infrastructure for Delay2Decision.
 
 ---
 
@@ -8,103 +8,120 @@ This folder contains all monitoring infrastructure for the Delay2Decision backen
 
 | Component | File | Purpose |
 |---|---|---|
-| Structured Logging | `src/api/app.py` | JSON logs → Google Cloud Logging |
-| GCP Alert Setup | `setup_gcp_alerts.sh` | CLI script to create Cloud Monitoring alert policies |
-| Drift Detection | `drift_check.py` | Evidently AI drift report vs. training baseline |
-| Request Log | `request_log.jsonl` | Auto-generated; stores live `/api/plan` feature inputs |
-| GitHub Action | `.github/workflows/monitor.yml` | Manual-trigger CI job to run drift check |
+| Structured Logging | `src/api/app.py` | JSON logs -> Google Cloud Logging |
+| GCP Alert Setup | `setup_gcp_alerts.sh` / `setup_gcp_alerts.ps1` | Create Cloud Monitoring alert policies |
+| Batch Drift Detection | `drift_check.py` | Compare the newly generated `layover_risk.csv` against a baseline |
+| Request Log | `request_log.jsonl` | Optional live-request log from the API (not the main batch drift source) |
+| GitHub Action | `.github/workflows/monitor.yml` | Manual monitoring workflow with drift report + logs artifacts |
 
 ---
 
-## Step 1 — Structured Logging (Already Done ✅)
+## Step 1 - Structured Logging
 
 The backend (`src/api/app.py`) emits structured JSON logs to stdout:
-- Every HTTP request: method, path, status, duration_ms
-- Every LLM call attempt (Groq or Ollama)
-- Every pipeline failure with full traceback
+- every HTTP request: method, path, status, duration_ms
+- every LLM call attempt (Groq or Ollama)
+- every pipeline failure with traceback
 
-When deployed to **Cloud Run**, these are automatically indexed in **Google Cloud Logging**.
-You can query them at:
-```
-https://console.cloud.google.com/logs/query?project=delay2decision
-```
+When deployed to Cloud Run, these logs are indexed in Google Cloud Logging.
 
 ---
 
-## Step 2 — GCP Cloud Monitoring Alerts
+## Step 2 - GCP Cloud Monitoring Alerts
 
-### Prerequisites
-1. Authenticate: `gcloud auth login`
-2. Set project: `gcloud config set project delay2decision`
-3. Create an email notification channel in **GCP Console → Monitoring → Alerting → Notification channels**
-4. Get your channel ID:
-   ```bash
-   gcloud alpha monitoring channels list --project=delay2decision
-   ```
-5. Open `setup_gcp_alerts.sh` and replace `REPLACE_WITH_YOUR_CHANNEL_ID` with your actual channel ID.
+Use `setup_gcp_alerts.sh` or `setup_gcp_alerts.ps1` to create these alert policies:
+- `D2D - High 5xx Error Rate`
+- `D2D - High p99 Latency`
+- `D2D - Container Instance Restart`
 
-### Run the script
-```bash
-chmod +x mlops/monitoring/setup_gcp_alerts.sh
-./mlops/monitoring/setup_gcp_alerts.sh
-```
-
-### What it creates
-| Alert | Threshold | Severity |
-|---|---|---|
-| High 5xx Error Rate | >5% of requests fail in 5 min | ERROR |
-| High p99 Latency | p99 > 3000ms | WARNING |
-| Container Restart | Any restart event | CRITICAL |
+These alerts matter after deployment, when the container is running on GCP.
 
 ---
 
-## Step 3 — Data Drift Detection
+## Step 3 - Batch Drift Detection
 
-The `drift_check.py` script compares incoming `/api/plan` request features against the training dataset baseline using **Evidently AI**.
+The current project is batch-oriented:
+1. you receive a new raw dataset
+2. you run the data pipeline locally
+3. the pipeline generates a new `reports/layover_risk.csv`
+4. Docker copies that finished CSV into the container
+5. you deploy the container to GCP
 
-### How it works
-1. `app.py` appends each `/api/plan` call's features to `mlops/monitoring/request_log.jsonl`
-2. `drift_check.py` reads that file vs. `data/gold/silver_validated.csv`
-3. Evidently generates a drift report at `reports/drift_report.html`
-4. The script exits with code 1 if drift is detected (triggers CI failure)
+Because of that, drift detection belongs before deployment.
+
+### What the script checks
+
+By default, `drift_check.py` compares:
+- current batch output: `reports/layover_risk.csv`
+- reference baseline:
+  - `HEAD:reports/layover_risk.csv` if the file has local changes, or
+  - `HEAD~1:reports/layover_risk.csv` if you are running in CI after a push
+
+This makes the script useful in both places:
+- local pre-deployment check after regenerating `layover_risk.csv`
+- GitHub Actions check after committing a new batch output
+
+### Tracked columns
+
+The drift check focuses on deployment-relevant numeric outputs such as:
+- `delay_prob`
+- `uncertainty`
+- `predicted_congestion`
+- `is_anomaly`
+- `buffer_minutes`
+- `risk`
+- `buffer_conservative`
+- `buffer_balanced`
+- `buffer_aggressive`
 
 ### Run locally
-```bash
-# Install dependencies first
-pip install evidently pandas
 
-# Run the check
+```bash
+pip install evidently pandas
 python mlops/monitoring/drift_check.py
 ```
 
-> **Note:** At least 20 requests must be logged before the drift check runs. Use the app normally for a while, then check.
+Optional explicit reference file:
+
+```bash
+python mlops/monitoring/drift_check.py --reference reports/layover_risk_baseline.csv
+```
+
+### Exit codes
+
+- `0` = passed or skipped cleanly
+- `1` = drift detected
+- `2` = setup or tooling error
 
 ---
 
-## Step 4 — GitHub Actions Manual Trigger
+## Step 4 - GitHub Actions Manual Trigger
 
 Go to:
-```
-GitHub → your repo → Actions → "📊 Monitoring — Drift & Health Check" → Run workflow
+
+```text
+GitHub -> your repo -> Actions -> "Monitoring - Drift & Health Check" -> Run workflow
 ```
 
 The workflow will:
-1. Install `evidently` and `pandas`
-2. Run `drift_check.py`
-3. Upload `drift_report.html` as a downloadable artifact
-4. Write a health summary to the GitHub Actions job summary page
-5. Fail the job if drift is detected (so you get a GitHub notification)
+1. fetch enough git history to compare against the previous commit
+2. run `drift_check.py`
+3. upload `drift_report.html` when generated
+4. upload `drift_check.log` as a debugging artifact
+5. write a summary showing `PASSED`, `DRIFT DETECTED`, `SKIPPED`, or `ERROR`
+6. fail the workflow only for real drift or real setup errors
 
 ---
 
 ## Files in this folder
 
-```
+```text
 mlops/monitoring/
-├── setup_gcp_alerts.sh   # One-time GCP alert policy setup (run manually)
-├── drift_check.py         # Evidently drift check script
-├── request_log.jsonl      # Auto-generated by the API (gitignored)
-└── README.md             # This file
+|-- setup_gcp_alerts.sh    # GCP alert setup (bash)
+|-- setup_gcp_alerts.ps1   # GCP alert setup (PowerShell)
+|-- drift_check.py         # Batch drift check for layover_risk.csv
+|-- request_log.jsonl      # Optional API request log (gitignored)
+`-- README.md              # This file
 ```
 
-> `request_log.jsonl` is automatically created by the running API and should be added to `.gitignore`.
+`request_log.jsonl` is still useful if you later want live-request observability, but the main drift check for this project now follows the batch pipeline output you actually deploy.

@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -49,7 +51,7 @@ jobs:
           if [ "$exit_code" -eq 1 ]; then
             echo "status=drift" >> "$GITHUB_OUTPUT"
           elif [ "$exit_code" -eq 0 ]; then
-            if grep -q "Not enough production data to run drift check" drift_check.log; then
+            if grep -Eq "Skipping drift check|Not enough production data to run drift check" drift_check.log; then
               echo "status=skipped" >> "$GITHUB_OUTPUT"
             else
               echo "status=passed" >> "$GITHUB_OUTPUT"
